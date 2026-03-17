@@ -1,0 +1,13 @@
+node_modules/
+examples/with-react-tasks/ui/dist/
+
+.env
+.env.local
+
+.DS_Store
+Thumbs.db
+
+.vscode/
+.idea/
+*.swp
+*.swo

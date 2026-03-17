@@ -1,0 +1,7 @@
+{
+    "port": 3200,
+    "include": [],
+    "agentsDir": "./agents",
+    "windowsDir": "./windows",
+    "ui": "./ui/dist"
+}

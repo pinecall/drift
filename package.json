@@ -1,0 +1,46 @@
+{
+    "name": "drift",
+    "version": "0.1.0",
+    "description": "Hyper-minimalist TypeScript framework for AI agents with tool decorators",
+    "type": "module",
+    "main": "src/index.ts",
+    "exports": {
+        ".": "./src/index.ts",
+        "./server": "./src/server/index.ts",
+        "./react": "./drift-react/src/index.ts"
+    },
+    "bin": {
+        "drift": "./bin/drift.ts"
+    },
+    "scripts": {
+        "dev": "node --import tsx --watch src/index.ts",
+        "test": "node --import tsx test/run.ts",
+        "test:integration": "node --import tsx test/run.ts --integration",
+        "test:verbose": "node --import tsx test/run.ts --verbose",
+        "typecheck": "tsc --noEmit"
+    },
+    "keywords": [
+        "ai",
+        "agent",
+        "llm",
+        "anthropic",
+        "claude",
+        "typescript",
+        "framework"
+    ],
+    "author": "Bernardo Castro <bernardo@pinecall.io>",
+    "license": "MIT",
+    "dependencies": {
+        "@anthropic-ai/sdk": "^0.32.1",
+        "ws": "^8.19.0"
+    },
+    "devDependencies": {
+        "@types/node": "^22.0.0",
+        "@types/ws": "^8.18.1",
+        "tsx": "^4.19.0",
+        "typescript": "^5.7.0"
+    },
+    "engines": {
+        "node": ">=24.0.0"
+    }
+}
