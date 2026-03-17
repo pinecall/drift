@@ -2,7 +2,7 @@
  * Window + CodebaseWindow — Unit Tests
  */
 import { Window, type WindowItem, type WindowChangeEvent } from '../../packages/drift/src/core/window.ts';
-import { CodebaseWindow, type FileEntry } from '../../packages/drift/src/windows/codebase-window.ts';
+import { CodebaseWindow, type FileEntry } from '../../packages/drift/src/windows/codebase-window.tsx';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';

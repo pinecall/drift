@@ -10,7 +10,7 @@
  */
 
 import { Agent } from '../core/agent.ts';
-import { CodebaseWindow } from '../windows/codebase-window.ts';
+import { CodebaseWindow } from '../windows/codebase-window.tsx';
 
 const DEVELOPER_PROMPT = `<role>
 You are an expert developer. You write clean, working code fast.

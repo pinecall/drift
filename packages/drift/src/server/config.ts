@@ -14,7 +14,7 @@ import { DeveloperAgent } from '../agents/developer.ts';
 import { DeveloperLiteAgent } from '../agents/developer-lite.ts';
 import { ResearcherAgent } from '../agents/researcher.ts';
 import { PlaywrightAgent } from '../agents/playwright.ts';
-import { CodebaseWindow } from '../windows/codebase-window.ts';
+import { CodebaseWindow } from '../windows/codebase-window.tsx';
 
 // ── Types ───────────────────────────────────────────
 

@@ -20,7 +20,7 @@ import type { Server as HttpServer } from 'node:http';
 import type { Agent } from '../core/agent.ts';
 import { Session } from '../core/session.ts';
 import type { Window } from '../core/window.ts';
-import type { CodebaseWindow } from '../windows/codebase-window.ts';
+import type { CodebaseWindow } from '../windows/codebase-window.tsx';
 import type { LoadedAgent } from './config.ts';
 import { listModels, getModel } from '../provider/models.ts';
 import type { Effort } from '../types.ts';

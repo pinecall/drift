@@ -1,3 +1,5 @@
+/** @jsx jsx */
+/** @jsxFrag Fragment */
 /**
  * Drift — CodebaseWindow
  * 
@@ -13,6 +15,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { Window, type WindowItem } from '../core/window.ts';
+import { jsx, Fragment, render } from '../jsx-runtime.ts';
 
 // ── Types ───────────────────────────────────────────
 
@@ -168,32 +171,33 @@ export class CodebaseWindow extends Window<FileEntry> {
      */
     render(): string {
         if (this._items.size === 0) {
-            return '\n\n<window>\n📂 No files open. Use open_files() to load files.\n</window>';
+            return render(
+                <window name="window">
+                    <text>📂 No files open. Use open_files() to load files.</text>
+                </window>
+            );
         }
 
         this._cleanGrepResults();
         const openPaths = this.keys();
-        const sections: string[] = [];
         let totalLines = 0;
 
+        // Build file sections
+        const fileSections: string[] = [];
         for (const [relativePath, entry] of this._items) {
             if (entry.disabled) continue;
-
             const lines = entry.content.split('\n');
             totalLines += lines.length;
-
             const numbered = lines
                 .map((line, i) => `${String(i + 1).padStart(4)}| ${line}`)
                 .join('\n');
-
-            sections.push(
-                `┌─ ${relativePath} (${lines.length} lines) ─┐\n` +
-                `${numbered}\n` +
-                `└${'─'.repeat(40)}┘`
+            fileSections.push(
+                `┌─ ${relativePath} (${lines.length} lines) ─┐\n${numbered}\n└${'─'.repeat(40)}┘`
             );
         }
 
-        // Active grep results
+        // Build grep sections
+        const grepSections: string[] = [];
         for (const grep of this._grepResults) {
             const turnsLeft = Math.max(0, grep.fullUntilTurn - this.turn);
             const grepLines = [`┌─ grep: "${grep.pattern}" (${grep.matches.length} matches, ${turnsLeft} turn${turnsLeft !== 1 ? 's' : ''} left) ─┐`];
@@ -202,19 +206,20 @@ export class CodebaseWindow extends Window<FileEntry> {
                 grepLines.push(`    ${m.content}`);
             }
             grepLines.push(`└${'─'.repeat(40)}┘`);
-            sections.push(grepLines.join('\n'));
+            grepSections.push(grepLines.join('\n'));
         }
 
-        let header = `📂 Open files (${this._items.size}): ${openPaths.join(', ')}\n`;
-        header += `⚠️  These files AUTO-REFRESH after every edit. Do NOT re-open them.\n`;
-        header += `Use the line numbers below for all edit operations.\n`;
-
-        return (
-            `\n\n<window>\n` +
-            header + '\n' +
-            sections.join('\n\n') +
-            `\n\n📊 Window: ${this._items.size} file(s), ${totalLines} lines total` +
-            `\n</window>`
+        return render(
+            <window name="window">
+                <line>📂 Open files ({this._items.size}): {openPaths.join(', ')}</line>
+                <line>⚠️  These files AUTO-REFRESH after every edit. Do NOT re-open them.</line>
+                <line>Use the line numbers below for all edit operations.</line>
+                <br />
+                <text>{[...fileSections, ...grepSections].join('\n\n')}</text>
+                <br />
+                <br />
+                <text>📊 Window: {this._items.size} file(s), {totalLines} lines total</text>
+            </window>
         );
     }
 
@@ -226,21 +231,24 @@ export class CodebaseWindow extends Window<FileEntry> {
             return '📂 No files open. Use open_files() to load files.';
         }
 
-        const lines: string[] = [];
         let totalLines = 0;
-
-        lines.push(`📂 Loaded in window (${this._items.size} file${this._items.size !== 1 ? 's' : ''}):`);
-
+        const fileEntries: { path: string; lines: number }[] = [];
         for (const [relativePath, entry] of this._items) {
             if (entry.disabled) continue;
             totalLines += entry.lines;
-            lines.push(`  • ${relativePath} (${entry.lines} lines)`);
+            fileEntries.push({ path: relativePath, lines: entry.lines });
         }
 
-        lines.push(`📊 ${totalLines} total lines`);
-        lines.push(`⚠️ File content is in the window section of the system prompt.`);
-
-        return lines.join('\n');
+        return render(
+            <>
+                <line>📂 Loaded in window ({this._items.size} file{this._items.size !== 1 ? 's' : ''}):</line>
+                {fileEntries.map(f => (
+                    <line>  • {f.path} ({f.lines} lines)</line>
+                ))}
+                <line>📊 {totalLines} total lines</line>
+                <text>⚠️ File content is in the window section of the system prompt.</text>
+            </>
+        );
     }
 
     // ── Stats ───────────────────────────────────────

@@ -10,7 +10,7 @@
  */
 
 import { Agent } from '../core/agent.ts';
-import { CodebaseWindow } from '../windows/codebase-window.ts';
+import { CodebaseWindow } from '../windows/codebase-window.tsx';
 
 const DEVELOPER_LITE_PROMPT = `<role>
 You are a code editor. You read, analyze, and edit code files. You cannot run shell commands.

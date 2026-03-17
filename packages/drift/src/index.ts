@@ -19,7 +19,7 @@ export { DriftServer } from './server/index.ts';
 export { render, Fragment } from './jsx-runtime.ts';
 
 // Windows (domain-specific)
-export { CodebaseWindow, type FileEntry, type CodebaseWindowOptions } from './windows/codebase-window.ts';
+export { CodebaseWindow, type FileEntry, type CodebaseWindowOptions } from './windows/codebase-window.tsx';
 
 // Built-in agents
 export { DeveloperAgent } from './agents/developer.ts';
