@@ -244,8 +244,10 @@ export function createWSHandler(
                 // Auto-abort if currently running (interrupt mode)
                 if (session.isRunning) {
                     session.abort();
-                    // Small delay for abort to settle
-                    await new Promise(r => setTimeout(r, 50));
+                    // Wait until session actually stops (up to 2s)
+                    for (let i = 0; i < 40 && session.isRunning; i++) {
+                        await new Promise(r => setTimeout(r, 50));
+                    }
                 }
 
                 // Prefix message so the agent knows it's a nudge
