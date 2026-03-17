@@ -137,6 +137,13 @@ export class SQLiteStorage implements Storage {
     // ── Window State ────────────────────────────────
 
     saveWindow(sessionId: string, windowClass: string, data: any): void {
+        // Ensure pseudo-session exists for shared windows (FK constraint)
+        if (sessionId === '__shared__') {
+            this.db.prepare(`
+                INSERT OR IGNORE INTO sessions (id, agent_name, created_at, updated_at)
+                VALUES ('__shared__', '__system__', ?, ?)
+            `).run(Date.now(), Date.now());
+        }
         const stmt = this.db.prepare(`
             INSERT OR REPLACE INTO window_state (session_id, window_class, state)
             VALUES (?, ?, ?)

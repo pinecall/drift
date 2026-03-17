@@ -399,20 +399,29 @@ export function createWSHandler(
 
             case 'window:setState': {
                 const win = _resolveWindow(msg.agent);
-                if (win) win.setState(msg.patch);
+                if (win) {
+                    win.setState(msg.patch);
+                    _persistWindow(msg.agent, win);
+                }
                 break;
             }
 
             // ── Generic item operations ─────────
             case 'window:item:update': {
                 const win = _resolveWindow(msg.agent);
-                if (win && msg.id) win.update(msg.id, msg.patch || {});
+                if (win && msg.id) {
+                    win.update(msg.id, msg.patch || {});
+                    _persistWindow(msg.agent, win);
+                }
                 break;
             }
 
             case 'window:item:remove': {
                 const win = _resolveWindow(msg.agent);
-                if (win && msg.id) win.remove(msg.id);
+                if (win && msg.id) {
+                    win.remove(msg.id);
+                    _persistWindow(msg.agent, win);
+                }
                 break;
             }
 
@@ -621,6 +630,13 @@ export function createWSHandler(
         return agent?.window || null;
     }
 
+    /** Persist shared window state to storage after UI-driven mutations */
+    function _persistWindow(agentName: string | undefined, win: Window<any, any>) {
+        if (!storage) return;
+        const winClass = win.constructor.name;
+        storage.saveWindow('__shared__', winClass, win.toJSON());
+    }
+
     function _getAgentConfig(agent: Agent) {
         return {
             model: agent.modelConfig.shortName || agent.model,
@@ -687,6 +703,21 @@ function _restoreSessions(
         const defaultAgent = agents[0]?.agent;
         if (!defaultAgent) return;
 
+        // Restore shared window state ONCE (before sessions)
+        const restoredWindows = new Set<string>();
+        for (const a of agents) {
+            if (a.agent.window) {
+                const winClass = a.agent.window.constructor.name;
+                if (!restoredWindows.has(winClass)) {
+                    const winData = storage.loadWindow('__shared__', winClass);
+                    if (winData) {
+                        a.agent.window.loadJSON(winData);
+                        restoredWindows.add(winClass);
+                    }
+                }
+            }
+        }
+
         for (const data of savedSessions as any[]) {
             // Find the agent by name, fall back to default
             const agent = agentMap.get(data.agentName) || defaultAgent;
@@ -698,20 +729,14 @@ function _restoreSessions(
                 session.conversation.loadJSON(messages as any[]);
             }
 
-            // Restore window state
-            if (agent.window) {
-                const winClass = agent.window.constructor.name;
-                const winData = storage.loadWindow(data.id, winClass);
-                if (winData) {
-                    agent.window.loadJSON(winData);
-                }
-            }
-
             sessions.set(data.id, session);
         }
 
         if (sessions.size > 0) {
             console.log(`  📦 Restored ${sessions.size} session(s) from storage`);
+        }
+        if (restoredWindows.size > 0) {
+            console.log(`  🪟 Restored ${restoredWindows.size} window(s) from storage`);
         }
     } catch (err: any) {
         console.warn(`  ⚠ Failed to restore sessions: ${err.message}`);
