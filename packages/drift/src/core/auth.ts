@@ -22,6 +22,8 @@ import type { IncomingMessage } from 'node:http';
 /** User context returned by authenticate(). Apps can extend with roles, etc. */
 export interface DriftUser {
     id: string;
+    /** Optional: restrict which agents this user can access. If omitted, all agents are allowed. */
+    agents?: string[];
     [key: string]: any;
 }
 

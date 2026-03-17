@@ -89,7 +89,7 @@ console.log(result.cost);   // 0.003241
   - [Quick Protect (SecretAuth)](#quick-protect-standalone-apps)
   - [Token Validation (TokenAuth)](#token-validation-jwt-api-keys)
   - [Custom Auth](#custom-auth-nextauth-clerk-etc)
-  - [Authorization (per-agent, RBAC)](#authorization-per-action-rbac)
+  - [Per-Agent Access Control](#per-agent-access-control)
 - [Embedding (attach)](#embedding-attach)
 - [Persistence](#persistence)
 - [Project Structure](#project-structure)
@@ -1988,75 +1988,25 @@ const server = new DriftServer({
 });
 ```
 
-### Authorization (per-action RBAC)
+### Per-Agent Access Control
 
-Any auth adapter can optionally implement `authorize()` to control per-action and **per-agent** access:
+Return `agents` in your `DriftUser` to restrict which agents a user can access. Built-in — no manual checks needed:
 
 ```typescript
 const server = new DriftServer({
-    auth: {
-        authenticate(req) { /* ... */ },
-        authorize(user, action, msg) {
-            // Only admins can change model settings
-            if (action === 'chat:settings' && user.role !== 'admin') {
-                throw new Error('Admin only');
-            }
-            return true;
-        },
-    },
+    auth: new TokenAuth(async token => {
+        const user = await db.findUser(token);
+        return {
+            id: user.id,
+            agents: user.plan === 'pro'
+                ? ['developer', 'researcher', 'playwright']  // pro: all agents
+                : ['developer-lite'],                         // free: lite only
+        };
+    }),
 });
 ```
 
-#### Per-Agent Access Control
-
-Restrict which agents a user can talk to using `msg.agent`:
-
-```typescript
-// Define which agents each role can access
-const agentPermissions: Record<string, string[]> = {
-    admin:   ['developer', 'researcher', 'developer-lite', 'playwright'],
-    dev:     ['developer', 'developer-lite'],
-    viewer:  ['researcher'],
-};
-
-const server = new DriftServer({
-    auth: {
-        authenticate(req) {
-            const token = /* extract token */;
-            return { id: 'user-1', role: 'dev' };
-        },
-        authorize(user, action, msg) {
-            // Restrict agent access on chat actions
-            if (action.startsWith('chat:') && msg.agent) {
-                const allowed = agentPermissions[user.role] || [];
-                if (!allowed.includes(msg.agent)) {
-                    throw new Error(`No access to agent "${msg.agent}"`);
-                }
-            }
-            return true;
-        },
-    },
-});
-```
-
-Or per-user:
-
-```typescript
-const userAgents: Record<string, string[]> = {
-    'user-1': ['developer', 'researcher'],
-    'user-2': ['researcher'],
-};
-
-authorize(user, action, msg) {
-    if (action === 'chat:send' && msg.agent) {
-        const allowed = userAgents[user.id] || [];
-        if (!allowed.includes(msg.agent)) {
-            throw new Error('Unauthorized agent');
-        }
-    }
-    return true;
-}
-```
+If `agents` is omitted, all agents are allowed. If present, any action targeting an unlisted agent is automatically rejected.
 
 ### `DriftAuth` Interface
 
@@ -2068,6 +2018,7 @@ interface DriftAuth {
 
 interface DriftUser {
     id: string;
+    agents?: string[];   // restrict agent access (omit = all allowed)
     [key: string]: any;  // add roles, email, etc.
 }
 ```

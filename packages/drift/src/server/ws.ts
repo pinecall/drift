@@ -133,9 +133,17 @@ export function createWSHandler(
             }
 
             try {
-                // Per-message authorization
+                const user = clientUsers.get(ws)!;
+
+                // Built-in per-agent access control
+                if (msg.agent && user.agents && !user.agents.includes(msg.agent)) {
+                    send(ws, { event: 'error', action: msg.action, error: `No access to agent "${msg.agent}"` });
+                    return;
+                }
+
+                // Optional per-message authorization
                 if (resolvedAuth.authorize) {
-                    await resolvedAuth.authorize(clientUsers.get(ws)!, msg.action, msg);
+                    await resolvedAuth.authorize(user, msg.action, msg);
                 }
                 await handleMessage(ws, msg);
             } catch (err: any) {
