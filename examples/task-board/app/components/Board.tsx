@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react'
-import { useWindow } from 'drift/react'
-import { ArrowRight, Trash2, Circle, Flame, Zap, Leaf, LayoutGrid, Wifi, WifiOff } from 'lucide-react'
+import { useWindow, useChat } from 'drift/react'
+import { ArrowRight, Trash2, Circle, Flame, Zap, Leaf, LayoutGrid, Wifi, WifiOff, Eye } from 'lucide-react'
 import { useDriftContext } from 'drift/react'
 import { T } from '../lib/theme'
 
@@ -49,11 +49,12 @@ const STATUS_CYCLE: Record<string, 'todo' | 'doing' | 'done'> = {
 }
 
 // ── Task Card ──
-function TaskCard({ task, onMove, onDelete, onCyclePriority }: {
+function TaskCard({ task, onMove, onDelete, onCyclePriority, onNudge }: {
     task: TaskItem
     onMove: (id: string, status: 'todo' | 'doing' | 'done') => void
     onDelete: (id: string) => void
     onCyclePriority: (id: string) => void
+    onNudge: (task: TaskItem) => void
 }) {
     const priority = PRIORITY_CONFIG[task.priority]
     const PriorityIcon = priority.icon
@@ -98,8 +99,13 @@ function TaskCard({ task, onMove, onDelete, onCyclePriority }: {
                 </div>
             </div>
 
-            {/* Title */}
-            <div className="text-[13px] font-medium mb-1" style={{ color: T.t1 }}>{task.title}</div>
+            {/* Title — click to nudge */}
+            <div className="text-[13px] font-medium mb-1 cursor-pointer flex items-center gap-1.5 group/title"
+                style={{ color: T.t1 }}
+                onClick={() => onNudge(task)}>
+                <span className="hover:underline">{task.title}</span>
+                <Eye size={11} className="opacity-0 group-hover/title:opacity-40 transition-opacity" style={{ color: T.t3 }} />
+            </div>
 
             {/* Description */}
             {task.description && (
@@ -113,12 +119,13 @@ function TaskCard({ task, onMove, onDelete, onCyclePriority }: {
 }
 
 // ── Column ──
-function Column({ status, tasks, onMove, onDelete, onCyclePriority }: {
+function Column({ status, tasks, onMove, onDelete, onCyclePriority, onNudge }: {
     status: 'todo' | 'doing' | 'done'
     tasks: TaskItem[]
     onMove: (id: string, status: 'todo' | 'doing' | 'done') => void
     onDelete: (id: string) => void
     onCyclePriority: (id: string) => void
+    onNudge: (task: TaskItem) => void
 }) {
     const config = STATUS_CONFIG[status]
 
@@ -143,7 +150,7 @@ function Column({ status, tasks, onMove, onDelete, onCyclePriority }: {
                 )}
                 {tasks.map(task => (
                     <TaskCard key={task.id} task={task}
-                        onMove={onMove} onDelete={onDelete} onCyclePriority={onCyclePriority} />
+                        onMove={onMove} onDelete={onDelete} onCyclePriority={onCyclePriority} onNudge={onNudge} />
                 ))}
             </div>
         </div>
@@ -151,8 +158,9 @@ function Column({ status, tasks, onMove, onDelete, onCyclePriority }: {
 }
 
 // ── Main Board ──
-export function Board() {
+export function Board({ sessionId }: { sessionId: string }) {
     const { items, state, updateItem, removeItem, setState } = useWindow<TaskItem, BoardState>()
+    const { nudge } = useChat('task-agent', { sessionId })
     const { connected } = useDriftContext()
 
     const tasks = items as TaskItem[]
@@ -205,6 +213,14 @@ export function Board() {
         logActivity(`Changed priority to ${newPriority}`, id, task.title, `${task.priority} → ${newPriority}`)
     }, [tasks, updateItem, logActivity])
 
+    const handleNudge = useCallback((task: TaskItem) => {
+        const statusLabel = STATUS_CONFIG[task.status].label
+        nudge(
+            `User clicked on task "${task.title}" (${statusLabel}, ${task.priority} priority). Briefly explain what this task involves and suggest next steps.`,
+            { system: 'Be very brief — 1-2 sentences max. No tool calls.' }
+        )
+    }, [nudge])
+
     return (
         <div className="flex-1 flex flex-col min-h-0" style={{ background: T.bg }}>
             {/* Header */}
@@ -225,9 +241,9 @@ export function Board() {
 
             {/* Board columns */}
             <div className="flex-1 min-h-0 flex gap-6" style={{ padding: '24px' }}>
-                <Column status="todo" tasks={grouped.todo} onMove={handleMove} onDelete={handleDelete} onCyclePriority={handleCyclePriority} />
-                <Column status="doing" tasks={grouped.doing} onMove={handleMove} onDelete={handleDelete} onCyclePriority={handleCyclePriority} />
-                <Column status="done" tasks={grouped.done} onMove={handleMove} onDelete={handleDelete} onCyclePriority={handleCyclePriority} />
+                <Column status="todo" tasks={grouped.todo} onMove={handleMove} onDelete={handleDelete} onCyclePriority={handleCyclePriority} onNudge={handleNudge} />
+                <Column status="doing" tasks={grouped.doing} onMove={handleMove} onDelete={handleDelete} onCyclePriority={handleCyclePriority} onNudge={handleNudge} />
+                <Column status="done" tasks={grouped.done} onMove={handleMove} onDelete={handleDelete} onCyclePriority={handleCyclePriority} onNudge={handleNudge} />
             </div>
 
             {/* Footer */}

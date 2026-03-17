@@ -227,6 +227,76 @@ export function createWSHandler(
                 break;
             }
 
+            case 'chat:nudge': {
+                const agentName = msg.agent || '';
+                const agent = _resolveAgent(agentName);
+                const sessionId = msg.sessionId || agentName;
+
+                // Get or create session
+                let session = sessions.get(sessionId);
+                let isNewSession = false;
+                if (!session) {
+                    session = new Session(agent, { id: sessionId });
+                    sessions.set(sessionId, session);
+                    isNewSession = true;
+                }
+
+                // Auto-abort if currently running (interrupt mode)
+                if (session.isRunning) {
+                    session.abort();
+                    // Small delay for abort to settle
+                    await new Promise(r => setTimeout(r, 50));
+                }
+
+                // Prefix message so the agent knows it's a nudge
+                const now = new Date();
+                const ts = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+                const nudgePrompt = `[${ts}] [NUDGE from UI] ${msg.prompt}`;
+
+                // Optional: inject custom system instruction
+                const systemSuffix = msg.system
+                    ? `\n\n[Nudge instruction: ${msg.system}]`
+                    : '\n\n[This is a nudge from the UI. Respond briefly and helpfully.]';
+                const fullPrompt = nudgePrompt + systemSuffix;
+
+                // Optional: temporarily override model
+                const originalModel = agent.model;
+                if (msg.model) {
+                    agent.model = msg.model;
+                }
+
+                // Wire events & run
+                const cleanup = _wireAgentEvents(agent, agentName, sessionId, broadcast);
+                broadcast({ event: 'chat:started', agent: agentName, sessionId, nudge: true });
+
+                try {
+                    const result = await session.run(fullPrompt);
+                    broadcast({ event: 'chat:done', agent: agentName, sessionId, nudge: true, result: { text: result.text, cost: result.cost } });
+                } catch (err: any) {
+                    broadcast({ event: 'chat:error', agent: agentName, sessionId, error: err.message });
+                } finally {
+                    cleanup();
+                    // Restore original model
+                    if (msg.model) agent.model = originalModel;
+
+                    // Persist (unless ephemeral)
+                    if (storage && session && !msg.ephemeral) {
+                        storage.saveSession(session.toJSON());
+                        storage.saveMessages(sessionId, session.conversation.toJSON());
+                        if (agent.window) {
+                            const winClass = agent.window.constructor.name;
+                            storage.saveWindow(sessionId, winClass, agent.window.toJSON());
+                        }
+                    }
+                    broadcast({ event: 'sessions:updated', session: _serializeSession(session!) });
+                }
+
+                if (isNewSession) {
+                    broadcast({ event: 'sessions:created', session: _serializeSession(session!) });
+                }
+                break;
+            }
+
             case 'chat:swap': {
                 const sessionId = msg.sessionId || '';
                 const newAgentName = msg.agent || '';

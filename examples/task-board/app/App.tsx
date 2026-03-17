@@ -36,7 +36,7 @@ export default function App() {
                     onNewChat={handleNewChat}
                 />
                 <Chat sessionId={activeSessionId} />
-                <Board />
+                <Board sessionId={activeSessionId} />
             </div>
         </DriftProvider>
     )

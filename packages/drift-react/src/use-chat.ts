@@ -14,11 +14,23 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useDriftContext } from './provider.tsx';
 import type { ChatMessage, AgentConfig, MessagePart } from './types.ts';
 
+/** Options for nudge() — UI-triggered agent explanations. */
+export interface NudgeOptions {
+    /** Override the model for this nudge (e.g., 'haiku' for fast explanations). */
+    model?: string;
+    /** If true, nudge won't be saved to conversation history. Default: false. */
+    ephemeral?: boolean;
+    /** System instruction for this nudge (e.g., 'Be very brief, one sentence max'). */
+    system?: string;
+}
+
 export interface UseChatReturn {
     /** Full conversation history (includes the in-progress assistant message) */
     messages: ChatMessage[];
     /** Send a message to the agent */
     send: (text: string) => void;
+    /** Nudge the agent — trigger an explanation from a UI interaction. Auto-aborts current run. */
+    nudge: (prompt: string, options?: NudgeOptions) => void;
     /** Abort the current run */
     abort: () => void;
     /** Clear conversation history */
@@ -243,6 +255,27 @@ export function useChat(agentName: string, options?: { sessionId?: string }): Us
         wsSend({ action: 'chat:send', agent: activeAgent, sessionId, message: text });
     }, [wsSend, activeAgent, sessionId]);
 
+    const nudge = useCallback((prompt: string, options?: NudgeOptions) => {
+        // Add nudge as a user message (visually tagged)
+        setMessages(prev => [...prev, {
+            role: 'user',
+            content: prompt,
+            timestamp: Date.now(),
+            nudge: true,
+        }]);
+        setIsStreaming(true);
+        setLastError(null);
+        wsSend({
+            action: 'chat:nudge',
+            agent: activeAgent,
+            sessionId,
+            prompt,
+            ...(options?.model && { model: options.model }),
+            ...(options?.ephemeral && { ephemeral: true }),
+            ...(options?.system && { system: options.system }),
+        });
+    }, [wsSend, activeAgent, sessionId]);
+
     const abort = useCallback(() => {
         wsSend({ action: 'chat:abort', agent: activeAgent, sessionId });
     }, [wsSend, activeAgent, sessionId]);
@@ -266,6 +299,7 @@ export function useChat(agentName: string, options?: { sessionId?: string }): Us
     return {
         messages,
         send,
+        nudge,
         abort,
         clear,
         requestHistory,
