@@ -18,7 +18,7 @@ const server = new DriftServer({
     port: 3200,
     agentsDir: './agents',
     windowsDir: './windows',
-    ui: './ui/dist',
+    ui: '../dist',
     cwd: import.meta.dirname!,
     storage: true,  // SQLite persistence — tasks survive server restarts
 });

@@ -3,8 +3,9 @@
  * 
  * Demonstrates:
  *   - @tool decorators that modify window items → UI reacts in real-time
- *   - Agent reads window state (including user activity) via render()
- *   - Bidirectional: agent changes board, user changes board, agent sees both
+ *   - Agent reads window state (including all activity) via render()
+ *   - Bidirectional: agent changes board, user changes board, both see activity
+ *   - Agent actions are tracked alongside user actions in the activity log
  */
 
 import { Agent, tool } from '../../../../packages/drift/src/index.ts';
@@ -18,11 +19,11 @@ export class TaskAgent extends Agent {
 
     prompt = `You are a task management assistant. You help users manage their task board.
 
-IMPORTANT: The full board state is ALREADY in your context inside <task-board>. You can see all tasks, their statuses, priorities, and recent user activity. You do NOT need to call any tool to see the board — just read your context.
+IMPORTANT: The full board state is ALREADY in your context inside <task-board>. You can see all tasks, their statuses, priorities, and recent activity from both users and agents. You do NOT need to call any tool to see the board — just read your context.
 
 Pay attention to:
 - Current tasks by status (todo, doing, done)
-- Recent user activity — the user may have moved or deleted tasks from the UI
+- Recent activity — both user (👤) and agent (🤖) actions with timestamps
 
 Available capabilities:
 - Create new tasks with priorities (high/medium/low)
@@ -38,6 +39,10 @@ Keep responses concise and action-oriented.`;
     constructor() {
         super();
         this.window = new TaskBoardWindow();
+    }
+
+    private get board(): TaskBoardWindow {
+        return this.window as TaskBoardWindow;
     }
 
     @tool('Create a new task on the board', {
@@ -58,7 +63,15 @@ Keep responses concise and action-oriented.`;
             priority: (priority as TaskItem['priority']) || 'medium',
             createdAt: Date.now(),
         };
-        this.window!.add(id, task);
+        this.board.add(id, task);
+        this.board.logActivity({
+            source: 'agent',
+            agentName: 'task-agent',
+            action: 'created task',
+            taskId: id,
+            taskTitle: title,
+            detail: `priority: ${task.priority}`,
+        });
         return { success: true, result: `Created task "${title}" [${id}] with priority ${task.priority}` };
     }
 
@@ -67,11 +80,18 @@ Keep responses concise and action-oriented.`;
         status: { type: 'string', description: 'New status: todo, doing, or done' },
     })
     async move_task({ task_id, status }: { task_id: string; status: string }) {
-        const task = this.window!.get(task_id);
+        const task = this.board.get(task_id);
         if (!task) return { success: false, result: `Task ${task_id} not found` };
         
         const oldStatus = task.status;
-        this.window!.update(task_id, { status: status as TaskItem['status'] });
+        this.board.update(task_id, { status: status as TaskItem['status'] });
+        this.board.logActivity({
+            source: 'agent',
+            agentName: 'task-agent',
+            action: `moved task ${oldStatus} → ${status}`,
+            taskId: task_id,
+            taskTitle: task.title,
+        });
         return { success: true, result: `Moved "${task.title}" from ${oldStatus} → ${status}` };
     }
 
@@ -84,7 +104,7 @@ Keep responses concise and action-oriented.`;
     async update_task({ task_id, title, description, priority }: {
         task_id: string; title?: string; description?: string; priority?: string;
     }) {
-        const task = this.window!.get(task_id);
+        const task = this.board.get(task_id);
         if (!task) return { success: false, result: `Task ${task_id} not found` };
 
         const patch: Partial<TaskItem> = {};
@@ -92,7 +112,15 @@ Keep responses concise and action-oriented.`;
         if (description) patch.description = description;
         if (priority) patch.priority = priority as TaskItem['priority'];
 
-        this.window!.update(task_id, patch);
+        this.board.update(task_id, patch);
+        this.board.logActivity({
+            source: 'agent',
+            agentName: 'task-agent',
+            action: `updated task`,
+            taskId: task_id,
+            taskTitle: task.title,
+            detail: Object.keys(patch).join(', '),
+        });
         return { success: true, result: `Updated "${task.title}": ${Object.keys(patch).join(', ')} changed` };
     }
 
@@ -100,15 +128,20 @@ Keep responses concise and action-oriented.`;
         task_id: { type: 'string', description: 'The task ID to delete' },
     })
     async delete_task({ task_id }: { task_id: string }) {
-        const task = this.window!.get(task_id);
+        const task = this.board.get(task_id);
         if (!task) return { success: false, result: `Task ${task_id} not found` };
 
         const title = task.title;
-        this.window!.remove(task_id);
+        this.board.remove(task_id);
+        this.board.logActivity({
+            source: 'agent',
+            agentName: 'task-agent',
+            action: 'deleted task',
+            taskId: task_id,
+            taskTitle: title,
+        });
         return { success: true, result: `Deleted task "${title}" [${task_id}]` };
     }
-
-
 }
 
 export default TaskAgent;

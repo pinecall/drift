@@ -4,9 +4,9 @@
  * TaskBoardWindow — Reactive task board with JSX rendering
  * 
  * Items: tasks with title, description, status, priority
- * State: filter + user activity log
+ * State: filter + activity log (tracks both user and agent actions)
  * 
- * The agent sees the full board + recent user actions via render().
+ * The agent sees the full board + all recent activity via render().
  */
 
 import { Window, type WindowItem } from '../../../../packages/drift/src/core/window.ts';
@@ -23,7 +23,9 @@ export interface TaskItem extends WindowItem {
     createdAt: number;
 }
 
-export interface UserActivity {
+export interface Activity {
+    source: 'user' | 'agent';
+    agentName?: string;
     action: string;
     taskId?: string;
     taskTitle?: string;
@@ -33,17 +35,25 @@ export interface UserActivity {
 
 export interface BoardState {
     filter: 'all' | 'todo' | 'doing' | 'done';
-    userActivity: UserActivity[];
+    activity: Activity[];
 }
 
 // ── Window ──
 
 const priorityEmoji = { high: '🔴', medium: '🟡', low: '🟢' } as const;
+const sourceEmoji = { user: '👤', agent: '🤖' } as const;
 
 export class TaskBoardWindow extends Window<TaskItem, BoardState> {
     constructor() {
-        super({ filter: 'all', userActivity: [] });
+        super({ filter: 'all', activity: [] });
         this._seedTasks();
+    }
+
+    /** Log an activity (from user or agent). */
+    logActivity(entry: Omit<Activity, 'at'>): void {
+        const activity = [...(this._state.activity || []), { ...entry, at: Date.now() }];
+        // Keep last 50 entries
+        this.setState({ activity: activity.slice(-50) });
     }
 
     private _seedTasks() {
@@ -67,8 +77,8 @@ export class TaskBoardWindow extends Window<TaskItem, BoardState> {
         const groups = { todo: [] as TaskItem[], doing: [] as TaskItem[], done: [] as TaskItem[] };
         for (const t of tasks) groups[t.status].push(t);
 
-        const activity = this._state.userActivity || [];
-        const recentActivity = activity.slice(-10);
+        const activity = this._state.activity || [];
+        const recentActivity = activity.slice(-15);
 
         return render(
             <window name="task-board">
@@ -94,11 +104,13 @@ export class TaskBoardWindow extends Window<TaskItem, BoardState> {
 
                 {recentActivity.length > 0 && (
                     <>
-                        <line>### 👤 Recent User Activity</line>
+                        <line>### Recent Activity</line>
                         {recentActivity.map(a => {
-                            const ago = Math.round((Date.now() - a.at) / 1000);
+                            const time = new Date(a.at).toLocaleTimeString();
+                            const icon = sourceEmoji[a.source];
+                            const who = a.source === 'agent' && a.agentName ? ` (${a.agentName})` : '';
                             return (
-                                <line>  - {ago}s ago: {a.action}{a.taskTitle ? ` "${a.taskTitle}"` : ''}{a.detail ? ` (${a.detail})` : ''}</line>
+                                <line>  - [{time}] {icon}{who} {a.action}{a.taskTitle ? ` "${a.taskTitle}"` : ''}{a.detail ? ` (${a.detail})` : ''}</line>
                             );
                         })}
                         <br />

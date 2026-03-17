@@ -14,7 +14,9 @@ interface TaskItem {
     createdAt: number
 }
 
-interface UserActivity {
+interface Activity {
+    source: 'user' | 'agent'
+    agentName?: string
     action: string
     taskId?: string
     taskTitle?: string
@@ -24,7 +26,7 @@ interface UserActivity {
 
 interface BoardState {
     filter: 'all' | 'todo' | 'doing' | 'done'
-    userActivity: UserActivity[]
+    activity: Activity[]
 }
 
 // ── Constants ──
@@ -171,11 +173,11 @@ export function Board() {
 
     // Record user activity + perform action
     const logActivity = useCallback((action: string, taskId?: string, taskTitle?: string, detail?: string) => {
-        const activity: UserActivity = { action, taskId, taskTitle, detail, at: Date.now() }
-        const existing = (state?.userActivity || []) as UserActivity[]
-        // Keep last 20 activities
-        const updated = [...existing, activity].slice(-20)
-        setState({ userActivity: updated } as Partial<BoardState>)
+        const entry: Activity = { source: 'user', action, taskId, taskTitle, detail, at: Date.now() }
+        const existing = (state?.activity || []) as Activity[]
+        // Keep last 50 activities
+        const updated = [...existing, entry].slice(-50)
+        setState({ activity: updated } as Partial<BoardState>)
     }, [state, setState])
 
     const handleMove = useCallback((id: string, newStatus: 'todo' | 'doing' | 'done') => {
@@ -234,7 +236,7 @@ export function Board() {
                     Click priority badge to cycle • Hover card for actions • Agent sees all your changes
                 </span>
                 <span className="text-[10px]" style={{ color: T.t4 }}>
-                    {(state?.userActivity?.length || 0)} user actions logged
+                    {(state?.activity?.length || 0)} actions logged (user + agent)
                 </span>
             </div>
         </div>
