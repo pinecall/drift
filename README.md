@@ -1907,30 +1907,90 @@ import type {
 
 ## Authentication
 
-Pluggable auth — same pattern as Storage. Apps bring their own auth (JWT, NextAuth, Clerk, etc.).
+Pluggable auth adapter — same pattern as Storage. Three built-in strategies, or bring your own.
+
+Unauthorized connections are rejected with WebSocket close code `4001`.
+
+### Quick Protect (standalone apps)
+
+**No existing auth system? Use `SecretAuth`** — just a shared secret key:
+
+```bash
+# .env
+DRIFT_SECRET=my-super-secret-key-123
+```
 
 ```typescript
-// No auth (default — backward-compatible)
-const server = new DriftServer();
+import { DriftServer, SecretAuth } from 'drift';
 
-// Token-based (JWT, API key, etc.)
+// Reads DRIFT_SECRET from env automatically
+const server = new DriftServer({ auth: new SecretAuth() });
+
+// Or pass it explicitly
+const server = new DriftServer({ auth: new SecretAuth('my-secret') });
+```
+
+Client connects with:
+```typescript
+// Browser
+const ws = new WebSocket('ws://localhost:3100?secret=my-super-secret-key-123');
+
+// Or via header (Node.js clients)
+const ws = new WebSocket('ws://localhost:3100', {
+    headers: { Authorization: 'Bearer my-super-secret-key-123' },
+});
+```
+
+With `drift-react`:
+```typescript
+// Pass secret in the WebSocket URL
+<DriftProvider url="ws://localhost:3100?secret=my-super-secret-key-123">
+```
+
+### Token Validation (JWT, API keys)
+
+**Have your own tokens?** Use `TokenAuth` with a custom verify function:
+
+```typescript
+import { DriftServer, TokenAuth } from 'drift';
+import jwt from 'jsonwebtoken';
+
 const server = new DriftServer({
     auth: new TokenAuth(token => {
-        const decoded = jwt.verify(token, SECRET);
+        const decoded = jwt.verify(token, process.env.JWT_SECRET!);
         return { id: decoded.sub, role: decoded.role };
     }),
 });
+```
 
-// Custom (NextAuth, Clerk, etc.)
+`TokenAuth` extracts tokens from: URL `?token=xxx`, `Authorization: Bearer xxx`, or `Sec-WebSocket-Protocol` header.
+
+### Custom Auth (NextAuth, Clerk, etc.)
+
+**App already has auth?** Implement the `DriftAuth` interface:
+
+```typescript
 const server = new DriftServer({
     auth: {
         authenticate(req) {
-            const session = getServerSession(req);
+            const session = getServerSession(req);  // NextAuth, Clerk, etc.
             if (!session) throw new Error('Not authenticated');
             return { id: session.user.id, email: session.user.email };
         },
-        // Optional: per-action authorization
-        authorize(user, action) {
+    },
+});
+```
+
+### Authorization (per-action RBAC)
+
+Any auth adapter can optionally implement `authorize()` to control per-action access:
+
+```typescript
+const server = new DriftServer({
+    auth: {
+        authenticate(req) { /* ... */ },
+        authorize(user, action, msg) {
+            // Only admins can change model settings
             if (action === 'chat:settings' && user.role !== 'admin') {
                 throw new Error('Admin only');
             }
@@ -1940,9 +2000,26 @@ const server = new DriftServer({
 });
 ```
 
-`TokenAuth` extracts tokens from: URL param (`?token=xxx`), `Authorization: Bearer xxx` header, or `Sec-WebSocket-Protocol` header.
+### `DriftAuth` Interface
 
-Unauthorized connections are rejected with WebSocket close code `4001`.
+```typescript
+interface DriftAuth {
+    authenticate(req: IncomingMessage): Promise<DriftUser> | DriftUser;
+    authorize?(user: DriftUser, action: string, msg: any): Promise<boolean> | boolean;
+}
+
+interface DriftUser {
+    id: string;
+    [key: string]: any;  // add roles, email, etc.
+}
+```
+
+| Adapter | Use Case | Token Source |
+|---------|----------|-------------|
+| `NoAuth` | Development (default) | None |
+| `SecretAuth` | Standalone apps | `?secret=` / Bearer / `DRIFT_SECRET` env |
+| `TokenAuth` | JWT, API keys | `?token=` / Bearer / custom verify |
+| Custom | NextAuth, Clerk, etc. | Whatever your app uses |
 
 ---
 
@@ -2063,7 +2140,7 @@ drift/
 │   └── drift.ts                  # CLI — `drift server`, `drift dev`
 ├── test/
 │   ├── run.ts                    # Zero-dep test runner
-│   ├── unit/                     # 165 unit tests
+│   ├── unit/                     # 172 unit tests
 │   └── integration/              # 11 integration tests
 ├── examples/
 │   ├── basic/                    # 8 standalone script examples
@@ -2100,7 +2177,7 @@ node --import tsx examples/basic/<file>.ts
 
 ```bash
 nvm use 24                                  # Node 24 required
-npm test                                    # 165 unit tests (~0.5s)
+npm test                                    # 172 unit tests (~0.5s)
 npm run test:integration                    # + 11 real Haiku API tests (~30s, needs ANTHROPIC_API_KEY)
 npm run test:verbose                        # Show per-assertion details
 npm run typecheck                           # tsc --noEmit

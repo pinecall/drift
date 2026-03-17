@@ -96,3 +96,71 @@ export class TokenAuth implements DriftAuth {
         return null;
     }
 }
+
+/**
+ * Shared secret auth — simplest protection for standalone Drift apps.
+ * Checks a single secret key. No user management needed.
+ * 
+ * Uses DRIFT_SECRET env var by default, or pass a secret directly:
+ * 
+ *   new SecretAuth()                       // reads DRIFT_SECRET from env
+ *   new SecretAuth('my-secret-key')        // explicit secret
+ *   new SecretAuth('key', { userIdHeader: 'x-user-id' }) // extract user ID from header
+ * 
+ * Client connects with: ws://host?secret=xxx
+ * Or: Authorization: Bearer xxx
+ */
+export class SecretAuth implements DriftAuth {
+    private _secret: string;
+    private _userIdHeader?: string;
+
+    constructor(secret?: string, options?: { userIdHeader?: string }) {
+        this._secret = secret || process.env.DRIFT_SECRET || '';
+        this._userIdHeader = options?.userIdHeader;
+        if (!this._secret) {
+            throw new Error(
+                'SecretAuth requires a secret. Set DRIFT_SECRET env var or pass it to the constructor.'
+            );
+        }
+    }
+
+    authenticate(req: IncomingMessage): DriftUser {
+        const provided = this._extractSecret(req);
+        if (!provided) {
+            throw new Error('No secret provided');
+        }
+        if (provided !== this._secret) {
+            throw new Error('Invalid secret');
+        }
+
+        // Optionally extract user ID from a header (e.g., set by a reverse proxy)
+        const userId = this._userIdHeader
+            ? (req.headers[this._userIdHeader.toLowerCase()] as string) || 'authenticated'
+            : 'authenticated';
+
+        return { id: userId };
+    }
+
+    private _extractSecret(req: IncomingMessage): string | null {
+        // 1. URL param: ws://host?secret=xxx
+        try {
+            const url = new URL(req.url || '', `http://${req.headers.host || 'localhost'}`);
+            const secret = url.searchParams.get('secret') || url.searchParams.get('token');
+            if (secret) return secret;
+        } catch {}
+
+        // 2. Authorization header: Bearer xxx
+        const auth = req.headers['authorization'];
+        if (auth?.startsWith('Bearer ')) {
+            return auth.slice(7);
+        }
+
+        // 3. Sec-WebSocket-Protocol
+        const protocol = req.headers['sec-websocket-protocol'];
+        if (protocol && !protocol.includes(',')) {
+            return protocol;
+        }
+
+        return null;
+    }
+}

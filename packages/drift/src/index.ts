@@ -23,7 +23,7 @@ export { SQLiteStorage } from './core/sqlite-storage.ts';
 export type { Storage, SessionData } from './core/storage.ts';
 
 // Auth (pluggable authentication)
-export { NoAuth, TokenAuth } from './core/auth.ts';
+export { NoAuth, TokenAuth, SecretAuth } from './core/auth.ts';
 export type { DriftAuth, DriftUser } from './core/auth.ts';
 
 // Windows (domain-specific)

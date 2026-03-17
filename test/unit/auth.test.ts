@@ -1,11 +1,11 @@
 /**
  * Unit Tests — Auth
  * 
- * Tests the pluggable auth system: DriftAuth, NoAuth, TokenAuth.
+ * Tests the pluggable auth system: DriftAuth, NoAuth, TokenAuth, SecretAuth.
  */
 
 import * as http from 'node:http';
-import { NoAuth, TokenAuth } from '../../packages/drift/src/core/auth.ts';
+import { NoAuth, TokenAuth, SecretAuth } from '../../packages/drift/src/core/auth.ts';
 import type { DriftAuth, DriftUser } from '../../packages/drift/src/core/auth.ts';
 
 export const name = 'Auth';
@@ -29,7 +29,6 @@ export const tests = {
     'TokenAuth extracts token from URL param'(assert: any) {
         const auth = new TokenAuth(token => ({ id: token }));
         const user = auth.authenticate(fakeReq('/?token=abc123'));
-        // authenticate is async
         return (user as Promise<DriftUser>).then(u => {
             assert.equal(u.id, 'abc123');
         });
@@ -86,6 +85,72 @@ export const tests = {
         });
     },
 
+    // ── SecretAuth ──
+
+    'SecretAuth accepts valid secret from URL'(assert: any) {
+        const auth = new SecretAuth('my-secret');
+        const user = auth.authenticate(fakeReq('/?secret=my-secret'));
+        assert.equal(user.id, 'authenticated');
+    },
+
+    'SecretAuth accepts valid secret from Authorization header'(assert: any) {
+        const auth = new SecretAuth('my-secret');
+        const user = auth.authenticate(fakeReq('/', { authorization: 'Bearer my-secret' }));
+        assert.equal(user.id, 'authenticated');
+    },
+
+    'SecretAuth rejects invalid secret'(assert: any) {
+        const auth = new SecretAuth('correct');
+        try {
+            auth.authenticate(fakeReq('/?secret=wrong'));
+            assert.ok(false, 'should have thrown');
+        } catch (err: any) {
+            assert.equal(err.message, 'Invalid secret');
+        }
+    },
+
+    'SecretAuth rejects missing secret'(assert: any) {
+        const auth = new SecretAuth('correct');
+        try {
+            auth.authenticate(fakeReq());
+            assert.ok(false, 'should have thrown');
+        } catch (err: any) {
+            assert.equal(err.message, 'No secret provided');
+        }
+    },
+
+    'SecretAuth throws on construction without secret'(assert: any) {
+        const oldEnv = process.env.DRIFT_SECRET;
+        delete process.env.DRIFT_SECRET;
+        try {
+            new SecretAuth();
+            assert.ok(false, 'should have thrown');
+        } catch (err: any) {
+            assert.ok(err.message.includes('DRIFT_SECRET'), err.message);
+        } finally {
+            if (oldEnv) process.env.DRIFT_SECRET = oldEnv;
+        }
+    },
+
+    'SecretAuth reads from DRIFT_SECRET env var'(assert: any) {
+        const oldEnv = process.env.DRIFT_SECRET;
+        process.env.DRIFT_SECRET = 'env-secret';
+        try {
+            const auth = new SecretAuth();
+            const user = auth.authenticate(fakeReq('/?secret=env-secret'));
+            assert.equal(user.id, 'authenticated');
+        } finally {
+            if (oldEnv) process.env.DRIFT_SECRET = oldEnv;
+            else delete process.env.DRIFT_SECRET;
+        }
+    },
+
+    'SecretAuth extracts userId from header'(assert: any) {
+        const auth = new SecretAuth('key', { userIdHeader: 'X-User-Id' });
+        const user = auth.authenticate(fakeReq('/?secret=key', { 'x-user-id': 'user-42' }));
+        assert.equal(user.id, 'user-42');
+    },
+
     // ── Custom auth (interface compliance) ──
 
     'custom auth with authorize'(assert: any) {
@@ -102,10 +167,8 @@ export const tests = {
         const user = auth.authenticate(fakeReq());
         assert.equal(user.id, 'user-1');
 
-        // Allowed action
         assert.equal(auth.authorize!(user as DriftUser, 'chat:send', {}), true);
 
-        // Blocked action
         try {
             auth.authorize!(user as DriftUser, 'chat:settings', {});
             assert.ok(false, 'should have thrown');
