@@ -1905,6 +1905,55 @@ import type {
 
 ---
 
+## Persistence
+
+Sessions, conversation history, and window state are persisted to SQLite by default. Survives server restarts.
+
+```typescript
+// Default: SQLite at .drift/drift.db (auto-created)
+const server = new DriftServer();
+
+// Custom path
+const server = new DriftServer({
+    storage: new SQLiteStorage('/path/to/data.db'),
+});
+
+// Disable persistence
+const server = new DriftServer({ storage: false });
+
+// Custom backend (implement Storage interface)
+const server = new DriftServer({ storage: new RedisStorage() });
+```
+
+### What's Persisted
+
+| Data | When | Restored |
+|------|------|----------|
+| Session metadata | After each chat run | On server start |
+| Conversation messages | After each chat run | When session loads |
+| Window state (`toJSON()`) | After each chat run | *(manual via `loadJSON()`)* |
+
+### Custom Storage Adapter
+
+```typescript
+import type { Storage, SessionData } from 'drift';
+import type { Message } from 'drift';
+
+class RedisStorage implements Storage {
+    saveSession(data: SessionData): Promise<void> { ... }
+    loadSession(id: string): Promise<SessionData | null> { ... }
+    listSessions(): Promise<SessionData[]> { ... }
+    deleteSession(id: string): Promise<void> { ... }
+    saveMessages(sessionId: string, messages: Message[]): Promise<void> { ... }
+    loadMessages(sessionId: string): Promise<Message[]> { ... }
+    saveWindow(sessionId: string, windowClass: string, data: any): Promise<void> { ... }
+    loadWindow(sessionId: string, windowClass: string): Promise<any | null> { ... }
+    close(): Promise<void> { ... }
+}
+```
+
+---
+
 ## Project Structure
 
 ```
@@ -1934,7 +1983,7 @@ drift/
 │   └── drift.ts                  # CLI — `drift server`, `drift dev`
 ├── test/
 │   ├── run.ts                    # Zero-dep test runner
-│   ├── unit/                     # 145 unit tests
+│   ├── unit/                     # 156 unit tests
 │   └── integration/              # 11 integration tests
 ├── examples/
 │   ├── basic/                    # 8 standalone script examples
@@ -1971,7 +2020,7 @@ node --import tsx examples/basic/<file>.ts
 
 ```bash
 nvm use 24                                  # Node 24 required
-npm test                                    # 145 unit tests (~0.5s)
+npm test                                    # 156 unit tests (~0.5s)
 npm run test:integration                    # + 11 real Haiku API tests (~30s, needs ANTHROPIC_API_KEY)
 npm run test:verbose                        # Show per-assertion details
 npm run typecheck                           # tsc --noEmit
