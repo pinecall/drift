@@ -41,6 +41,11 @@ console.log(result.cost);   // 0.003241
   - [Accessors](#accessors)
   - [Events](#events)
 - [Session](#session)
+  - [Lifecycle](#lifecycle)
+  - [Swap Agent](#swap-agent-keep-history)
+  - [Persistence](#persistence)
+  - [WebSocket Protocol](#websocket-protocol)
+  - [React (useSessions)](#react-usesessions)
 - [Built-in Agents (4)](#built-in-agents-4)
 - [Multi-Turn Conversations](#multi-turn-conversations)
 - [@tool Decorator](#tool-decorator)
@@ -331,45 +336,94 @@ agent.cwd            // string — working directory
 
 ## Session
 
-Manages independent conversation sessions per agent. A `Session` owns a `Conversation` and delegates `run`/`stream` to an `Agent`, enabling multiple parallel conversations with the same agent.
+A `Session` owns a `Conversation` and delegates execution to an `Agent`. Agents are stateless — history lives in the session. Multiple sessions can run in parallel with the same or different agents.
+
+### Lifecycle
 
 ```typescript
-import { Session, Agent } from 'drift';
+import { Session } from 'drift';
 
-const agent = new MyAgent();
-const session = new Session(agent);
-
-// Run within the session — history is scoped to this session
-const result = await session.run('Hello!');
-console.log(session.id);              // auto-generated UUID
-console.log(session.isRunning);       // false (run complete)
-console.log(session.conversation);    // Conversation instance
+const session = new Session(agent);       // auto-generates UUID
+await session.run('Hello!');              // agent runs with session's conversation
+await session.run('Follow-up question');  // same history, multi-turn
+session.clear();                          // reset conversation
 ```
 
-**Swap agents within a session** (preserves history):
+### Swap Agent (keep history)
 
 ```typescript
-const otherAgent = new OtherAgent();
 session.swap(otherAgent);
-await session.run('Continue with different agent');
+await session.run('Continue with different model');
 ```
 
-**API:**
+### Persistence
+
+Sessions are **automatically persisted** by `DriftServer` when using a `Storage` backend (SQLite by default):
+
+- **Saved after each `chat:send`** — session metadata, full message history, and window state
+- **Restored on server restart** — sessions re-appear with their conversation history intact
+- **Deleted** via `sessions:delete` WebSocket action or when `storage.deleteSession(id)` is called
+
+```
+User sends message → Session.run() → Agent processes
+                                       ↓
+                              Conversation updated
+                                       ↓
+                    storage.saveSession() + storage.saveMessages()
+                                       ↓
+Server restart → storage.listSessions() → sessions restored with history
+```
+
+To disable persistence: `new DriftServer({ storage: false })`.
+
+### WebSocket Protocol
+
+The server manages sessions via these WS actions:
+
+| Action | Payload | Response Event | Description |
+|--------|---------|---------------|-------------|
+| `sessions:list` | — | `sessions:list` | List all active sessions |
+| `sessions:create` | `{ agent }` | `sessions:created` | Create new session for agent |
+| `sessions:delete` | `{ sessionId }` | `sessions:deleted` | Delete session + persisted data |
+| `chat:send` | `{ sessionId, agent, message }` | `chat:done` | Send message (auto-creates session) |
+| `chat:history` | `{ sessionId }` | `chat:history` | Get full conversation history |
+| `chat:clear` | `{ sessionId }` | `chat:cleared` | Clear conversation |
+| `chat:swap` | `{ sessionId, agent }` | `chat:swapped` | Swap agent within session |
+
+If `chat:send` is called without an existing `sessionId`, a new session is created automatically.
+
+### React (`useSessions()`)
+
+```typescript
+import { useSessions } from 'drift-react';
+
+function SessionList() {
+    const { sessions, createSession, deleteSession } = useSessions();
+
+    return sessions.map(s => (
+        <div key={s.id}>
+            {s.agentName} — {s.messageCount} msgs
+            <button onClick={() => deleteSession(s.id)}>Delete</button>
+        </div>
+    ));
+}
+```
+
+### API Reference
 
 | Method/Property | Type | Description |
 |---|---|---|
 | `run(message)` | `Promise<AgentResult>` | Run agent with session's conversation |
-| `stream(message)` | `EventEmitter` | Stream agent with session's conversation |
+| `stream(message)` | `StreamBuilder` | Stream agent with session's conversation |
 | `swap(agent)` | `void` | Replace agent, keep conversation |
 | `abort()` | `void` | Abort current run |
 | `clear()` | `void` | Clear conversation history |
+| `toJSON()` | `SessionData` | Serialize for persistence |
 | `id` | `string` | Session UUID |
 | `agent` | `Agent` | Current agent |
 | `conversation` | `Conversation` | Session's conversation |
 | `isRunning` | `boolean` | Whether a run is in progress |
 | `createdAt` | `number` | Creation timestamp |
-
-The `DriftServer` uses sessions internally — each WebSocket `chat:send` with a `sessionId` creates or retrieves a session, enabling multiple independent chats.
 
 ---
 
@@ -1990,23 +2044,19 @@ const server = new DriftServer({
 
 ### Per-Agent Access Control
 
-Return `agents` in your `DriftUser` to restrict which agents a user can access. Built-in — no manual checks needed:
+To restrict which agents a user can access, check `msg.agent` in `authorize()`:
 
 ```typescript
-const server = new DriftServer({
-    auth: new TokenAuth(async token => {
-        const user = await db.findUser(token);
-        return {
-            id: user.id,
-            agents: user.plan === 'pro'
-                ? ['developer', 'researcher', 'playwright']  // pro: all agents
-                : ['developer-lite'],                         // free: lite only
-        };
-    }),
-});
-```
-
-If `agents` is omitted, all agents are allowed. If present, any action targeting an unlisted agent is automatically rejected.
+auth: {
+    authenticate(req) { /* ... */ },
+    authorize(user, action, msg) {
+        const allowed = getAllowedAgents(user);  // your logic
+        if (msg.agent && !allowed.includes(msg.agent)) {
+            throw new Error('Unauthorized');
+        }
+        return true;
+    },
+}
 
 ### `DriftAuth` Interface
 
@@ -2018,7 +2068,6 @@ interface DriftAuth {
 
 interface DriftUser {
     id: string;
-    agents?: string[];   // restrict agent access (omit = all allowed)
     [key: string]: any;  // add roles, email, etc.
 }
 ```
