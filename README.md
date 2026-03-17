@@ -77,6 +77,8 @@ console.log(result.cost);   // 0.003241
 - [drift-react](#drift-react)
   - [DriftProvider](#driftprovider)
   - [useChat()](#usechatagentname-options)
+    - [nudge()](#nudge--ui-triggered-agent-explanations)
+  - [useThread()](#usethreadoptions--contextual-mini-chats)
   - [useSessions()](#usesessions)
   - [useWindow()](#usewindow)
   - [useDrift()](#usedrift)
@@ -1758,6 +1760,7 @@ function Chat({ sessionId }: { sessionId: string }) {
 |---|---|---|
 | `messages` | `ChatMessage[]` | Full history (includes in-progress assistant message) |
 | `send(text)` | `void` | Send message |
+| `nudge(prompt, opts?)` | `void` | Trigger a nudge (UI-driven agent explanation). Auto-aborts current run. |
 | `abort()` | `void` | Abort run |
 | `clear()` | `void` | Clear history |
 | `requestHistory()` | `void` | Request full history from server |
@@ -1768,6 +1771,148 @@ function Chat({ sessionId }: { sessionId: string }) {
 | `sessionId` | `string` | Current session ID |
 | `activeAgent` | `string` | Current agent name (may change after `swap`) |
 | `swap(agentName)` | `void` | Swap agent within the session |
+
+#### nudge() — UI-Triggered Agent Explanations
+
+Nudge lets the UI trigger agent responses from interactions (clicks, drags, etc.):
+
+```tsx
+const { nudge } = useChat('task-agent', { sessionId });
+
+// Card click → agent explains
+nudge(
+    `User clicked task "${task.title}". Explain briefly.`,
+    { system: 'Be brief, 1-2 sentences. No tool calls.' }
+);
+
+// Move → quick acknowledgment with a fast model
+nudge(
+    `User moved "${task.title}" to Done.`,
+    { model: 'haiku', ephemeral: true, system: 'One sentence ack.' }
+);
+```
+
+**`NudgeOptions`:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `model` | `string` | agent's model | Override model for this nudge |
+| `ephemeral` | `boolean` | `false` | Don't save to conversation history |
+| `system` | `string` | `'Respond briefly and helpfully.'` | System instruction for this nudge |
+
+**Server behavior:**
+- Auto-aborts current agent run if streaming (interrupt mode)
+- Message prefixed with `[NUDGE from UI]` so agent knows it's UI-triggered
+- Polls until session stops before starting (prevents race conditions)
+- Sends `chat:started`/`chat:text`/`chat:done` events with `nudge: true` flag
+
+### useThread(options) — Contextual Mini-Chats
+
+Contextual conversations scoped to an entity (card, item, etc.). Each thread has its own conversation history, isolated from the main chat. Internally, a thread is a sub-session with id `${parentSession}::thread::${threadId}`.
+
+```tsx
+import { useThread } from 'drift-react';
+
+function TaskCard({ task, sessionId }) {
+    const thread = useThread({
+        agent: 'task-agent',
+        threadId: `card:${task.id}`,
+        parentSession: sessionId,
+        context: `Task: "${task.title}" — ${task.description} (${task.status})`,
+        system: 'Help the user understand this task. Be concise.',
+    });
+
+    return (
+        <div>
+            {/* Thread messages */}
+            {thread.messages.map((msg, i) => (
+                <div key={i}>{msg.role}: {msg.content}</div>
+            ))}
+
+            {/* Send a message */}
+            <input onKeyDown={e => {
+                if (e.key === 'Enter') {
+                    thread.send(e.currentTarget.value);
+                    e.currentTarget.value = '';
+                }
+            }} />
+
+            {thread.isStreaming && <span>typing...</span>}
+        </div>
+    );
+}
+```
+
+**`ThreadOptions`:**
+
+| Option | Type | Required | Description |
+|--------|------|----------|-------------|
+| `agent` | `string` | yes | Which agent to use |
+| `threadId` | `string` | yes | Unique thread identifier (e.g. `'card:task-1'`) |
+| `parentSession` | `string` | yes | Parent session ID — thread inherits window access |
+| `context` | `string` | yes | Context injected into the agent's system prompt |
+| `model` | `string` | no | Model override for this thread |
+| `system` | `string` | no | Custom system instruction |
+
+**`UseThreadReturn`:**
+
+| Return | Type | Description |
+|---|---|---|
+| `messages` | `ChatMessage[]` | Thread conversation messages |
+| `send(text)` | `void` | Send a message in this thread |
+| `abort()` | `void` | Abort current streaming response |
+| `clear()` | `void` | Clear thread history |
+| `isStreaming` | `boolean` | Agent is responding? |
+| `open()` | `void` | Open the thread panel |
+| `close()` | `void` | Close the thread panel |
+| `toggle()` | `void` | Toggle open/closed |
+| `minimize()` | `void` | Minimize (keep history, hide panel) |
+| `isOpen` | `boolean` | Panel visible? |
+| `isMinimized` | `boolean` | Is minimized? |
+| `hasHistory` | `boolean` | Has any previous messages? |
+| `sessionId` | `string` | Thread session ID |
+| `lastError` | `string \| null` | Last error |
+
+**How threads work:**
+
+1. Thread creates a sub-session with id `${parentSession}::thread::${threadId}`
+2. The agent gets the `context` injected as a `[THREAD context: ...]` prefix
+3. The agent also sees the shared window (same `render()` output as main chat)
+4. Thread messages don't appear in the main chat
+5. Thread sessions are persisted (messages + session metadata survive restart)
+6. Auto-requests history on mount — previous thread messages are restored
+
+**WebSocket protocol (`thread:send`):**
+
+```json
+// Client → Server
+{
+    "action": "thread:send",
+    "agent": "task-agent",
+    "sessionId": "abc123::thread::card:task-1",
+    "parentSession": "abc123",
+    "threadId": "card:task-1",
+    "context": "Task: \"Fix bug\" — status: todo",
+    "message": "What does this task involve?",
+    "model": "haiku",          // optional
+    "system": "Be concise."    // optional
+}
+
+// Server → Client (same events as chat)
+{ "event": "chat:started", "sessionId": "abc123::thread::card:task-1" }
+{ "event": "chat:text",    "sessionId": "abc123::thread::card:task-1", "delta": "This task..." }
+{ "event": "chat:done",    "sessionId": "abc123::thread::card:task-1", "result": { ... } }
+```
+
+**Thread history (`thread:history`):**
+
+```json
+// Client → Server
+{ "action": "thread:history", "agent": "task-agent", "sessionId": "abc123::thread::card:task-1" }
+
+// Server → Client
+{ "event": "chat:history", "sessionId": "abc123::thread::card:task-1", "messages": [...] }
+```
 
 ### useSessions()
 
@@ -2226,11 +2371,52 @@ const server = new DriftServer({ storage: new RedisStorage() });
 
 ### What's Persisted
 
-| Data | When | Restored |
-|------|------|----------|
-| Session metadata | After each chat run | On server start |
-| Conversation messages | After each chat run | When session loads |
-| Window state (`toJSON()`) | After each chat run | *(manual via `loadJSON()`)* |
+| Data | When Saved | Restored |
+|------|------------|----------|
+| Session metadata | After each `chat:send`, `chat:nudge`, `thread:send` | On server start |
+| Conversation messages | After each `chat:send`, `chat:nudge`, `thread:send` | When session loads |
+| **Window state** | After every UI mutation + after agent runs | **Automatically on server start** |
+| Thread messages | After each `thread:send` | Via `thread:history` on hook mount |
+
+### Window Persistence
+
+Window state (items + state + turn counter) is persisted to the `window_state` table using the `__shared__` key:
+
+**When it saves:**
+- After every UI mutation (`window:item:update`, `window:item:remove`, `window:setState`) — immediate
+- After every `chat:send` and `chat:nudge` run completes — in the `finally` block
+
+**When it restores:**
+- On server startup, `_restoreSessions()` loads window state from `__shared__` key ONCE before restoring sessions
+- `window.loadJSON(data)` clears existing items and replaces with persisted state
+- If no saved data exists, seed data from the window constructor remains
+
+**Serialization format:**
+
+```typescript
+// window.toJSON() → saved to window_state.state as JSON
+{
+    items: [
+        ["task-1", { id: "task-1", title: "Fix bug", status: "done", ... }],
+        ["task-2", { id: "task-2", title: "Add tests", status: "todo", ... }],
+    ],
+    state: { filter: "all", activity: [...] },
+    turn: 5
+}
+```
+
+**SQLite schema (`window_state`):**
+
+```sql
+CREATE TABLE window_state (
+    session_id    TEXT NOT NULL,     -- '__shared__' for shared windows
+    window_class  TEXT NOT NULL,     -- e.g. 'TaskBoardWindow'
+    state         TEXT NOT NULL,     -- JSON blob from toJSON()
+    PRIMARY KEY (session_id, window_class)
+);
+```
+
+> The `__shared__` key has a pseudo-session in the `sessions` table to satisfy the FK constraint.
 
 ### Custom Storage Adapter
 
@@ -2273,7 +2459,8 @@ drift/
 │       └── src/
 │           ├── index.ts          # Public API barrel exports
 │           ├── provider.tsx      # DriftProvider — WebSocket context
-│           ├── use-chat.ts       # useChat() — streaming, tools, sessions
+│           ├── use-chat.ts       # useChat() — streaming, tools, sessions, nudge
+│           ├── use-thread.ts     # useThread() — contextual mini-chats
 │           ├── use-sessions.ts   # useSessions() — session lifecycle
 │           ├── use-window.ts     # useWindow() — reactive window state
 │           ├── use-drift.ts      # useDrift() — connection + agents

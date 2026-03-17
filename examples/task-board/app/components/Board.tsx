@@ -52,7 +52,7 @@ const STATUS_CYCLE: Record<string, 'todo' | 'doing' | 'done'> = {
 type NudgePhase = 'idle' | 'thinking' | 'streaming' | 'done'
 
 // ── Floating Thread Chat ──
-function ThreadPanel({ task, sessionId }: { task: TaskItem; sessionId: string }) {
+function ThreadPanel({ task, sessionId, onClose }: { task: TaskItem; sessionId: string; onClose: () => void }) {
     const thread = useThread({
         agent: 'task-agent',
         threadId: `card:${task.id}`,
@@ -63,6 +63,7 @@ function ThreadPanel({ task, sessionId }: { task: TaskItem; sessionId: string })
 
     const [input, setInput] = useState('')
     const [isMaximized, setIsMaximized] = useState(false)
+    const [isMinimized, setIsMinimized] = useState(false)
     const messagesEndRef = useRef<HTMLDivElement>(null)
 
     useEffect(() => {
@@ -76,27 +77,24 @@ function ThreadPanel({ task, sessionId }: { task: TaskItem; sessionId: string })
         setInput('')
     }
 
-    if (!thread.isOpen) {
-        // Minimized pill
-        if (thread.isMinimized) {
-            return (
-                <button
-                    onClick={() => thread.open()}
-                    className="flex items-center gap-1.5 rounded-full cursor-pointer"
-                    style={{
-                        position: 'fixed', bottom: '16px', right: '16px',
-                        background: T.accent, color: '#fff',
-                        padding: '8px 14px', fontSize: '11px',
-                        boxShadow: `0 4px 24px ${T.accent}40`,
-                        zIndex: 100,
-                    }}>
-                    <MessageCircle size={12} />
-                    {task.title}
-                    {thread.hasHistory && <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#fff' }} />}
-                </button>
-            )
-        }
-        return null
+    // Minimized pill
+    if (isMinimized) {
+        return (
+            <button
+                onClick={() => setIsMinimized(false)}
+                className="flex items-center gap-1.5 rounded-full cursor-pointer"
+                style={{
+                    position: 'fixed', bottom: '16px', right: '16px',
+                    background: T.accent, color: '#fff',
+                    padding: '8px 14px', fontSize: '11px',
+                    boxShadow: `0 4px 24px ${T.accent}40`,
+                    zIndex: 100,
+                }}>
+                <MessageCircle size={12} />
+                {task.title}
+                {thread.hasHistory && <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#fff' }} />}
+            </button>
+        )
     }
 
     const panelWidth = isMaximized ? '420px' : '340px'
@@ -139,14 +137,14 @@ function ThreadPanel({ task, sessionId }: { task: TaskItem; sessionId: string })
                         onMouseLeave={e => e.currentTarget.style.color = T.t4}>
                         <Maximize2 size={11} />
                     </button>
-                    <button onClick={() => thread.minimize()}
+                    <button onClick={() => setIsMinimized(true)}
                         className="p-1 rounded cursor-pointer"
                         style={{ color: T.t4 }}
                         onMouseEnter={e => e.currentTarget.style.color = T.t2}
                         onMouseLeave={e => e.currentTarget.style.color = T.t4}>
                         <Minus size={11} />
                     </button>
-                    <button onClick={() => thread.close()}
+                    <button onClick={() => onClose()}
                         className="p-1 rounded cursor-pointer"
                         style={{ color: T.t4 }}
                         onMouseEnter={e => e.currentTarget.style.color = T.red}
@@ -599,7 +597,7 @@ export function Board({ sessionId }: { sessionId: string }) {
             </div>
 
             {/* Floating Thread Chat */}
-            {threadTask && <ThreadPanel task={threadTask} sessionId={sessionId} />}
+            {threadTask && <ThreadPanel task={threadTask} sessionId={sessionId} onClose={() => setThreadTask(null)} />}
         </div>
     )
 }

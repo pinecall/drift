@@ -32,6 +32,14 @@ The Window is Drift's core data container that bridges agents, UI, and persisten
   - [SQLite Schema](#sqlite-schema)
   - [Custom Storage Backends](#custom-storage-backends)
 - [Nudge — UI-Triggered Agent Explanations](#nudge--ui-triggered-agent-explanations)
+- [Threads — Contextual Mini-Chats](#threads--contextual-mini-chats)
+  - [useThread() API](#usethread-api)
+  - [ThreadOptions](#threadoptions)
+  - [UseThreadReturn](#usethreadreturn)
+  - [Server Handlers](#server-handlers-threadsend--threadhistory)
+  - [WebSocket Protocol](#websocket-protocol-threads)
+  - [How Threads Relate to Windows](#how-threads-relate-to-windows)
+  - [Floating Thread Chat UI](#floating-thread-chat-ui)
 - [Full Data Flow](#full-data-flow)
   - [User Mutates via UI](#user-mutates-via-ui)
   - [Agent Mutates via Tools](#agent-mutates-via-tools)
@@ -503,6 +511,241 @@ nudge(
 - Message prefixed with `[NUDGE from UI]` so agent knows it's UI-triggered
 - Response streams through same `chat:started/text/done` events
 - Server polls until session stops before starting nudge (prevents race conditions)
+
+---
+
+## Threads — Contextual Mini-Chats
+
+Threads are scoped conversations attached to specific entities (cards, items, etc.). Unlike the main chat, each thread has its own isolated history. Think of them like Slack threads — focused discussions that don't pollute the main channel.
+
+```
+┌──────────────────────────────────────────┐
+│  Main Chat (useChat)                      │  ← full conversation with agent
+│  "Create 3 tasks for the sprint"          │
+│  "Move Fix Bug to done"                  │
+└──────────────────────────────────────────┘
+
+┌────────────────────────┐  ┌────────────────────────┐
+│  Thread: card:task-1    │  │  Thread: card:task-3    │  ← scoped mini-chats
+│  "What does this API   │  │  "Is this blocked?"     │
+│   schema need?"         │  │  "By whom?"             │
+│  "REST + GraphQL"       │  │  "The auth team"        │
+└────────────────────────┘  └────────────────────────┘
+```
+
+### useThread() API
+
+```typescript
+import { useThread } from 'drift/react';
+
+function TaskCard({ task, sessionId }) {
+    const thread = useThread({
+        agent: 'task-agent',
+        threadId: `card:${task.id}`,
+        parentSession: sessionId,
+        context: `Task: "${task.title}" — ${task.description} (status: ${task.status}, priority: ${task.priority})`,
+        system: 'Help the user understand this task. Be concise.',
+    });
+
+    // thread.messages      — ChatMessage[] (this thread's history only)
+    // thread.send('What does this involve?')
+    // thread.isStreaming    — agent is responding
+    // thread.hasHistory    — boolean, has previous messages
+    // thread.sessionId     — "abc123::thread::card:task-1"
+}
+```
+
+**Session ID derivation:**
+
+```
+parentSession::thread::threadId
+     │                    │
+     │                    └── unique per entity (e.g. 'card:task-1')
+     └── main session id (e.g. 'abc123')
+
+Example: "abc123::thread::card:task-1"
+```
+
+### ThreadOptions
+
+| Option | Type | Required | Description |
+|--------|------|----------|-------------|
+| `agent` | `string` | yes | Which agent handles this thread |
+| `threadId` | `string` | yes | Unique thread identifier (e.g. `'card:task-1'`, `'inspector:file.ts'`) |
+| `parentSession` | `string` | yes | Parent session ID — thread inherits the same window access |
+| `context` | `string` | yes | Context injected into the agent's system prompt for this thread |
+| `model` | `string` | no | Override the agent's model for this thread |
+| `system` | `string` | no | Custom system instruction (e.g. `'Be concise and helpful.'`) |
+
+### UseThreadReturn
+
+| Return | Type | Description |
+|--------|------|-------------|
+| `messages` | `ChatMessage[]` | Thread conversation messages (isolated from main chat) |
+| `send(text)` | `void` | Send a message in this thread |
+| `abort()` | `void` | Abort the current streaming response |
+| `clear()` | `void` | Clear thread history (wipes all messages) |
+| `isStreaming` | `boolean` | Is the agent currently responding? |
+| `open()` | `void` | Open the thread panel |
+| `close()` | `void` | Close the thread panel |
+| `toggle()` | `void` | Toggle open/closed |
+| `minimize()` | `void` | Minimize — keep history, hide panel |
+| `isOpen` | `boolean` | Is the panel currently visible? |
+| `isMinimized` | `boolean` | Is the panel minimized? |
+| `hasHistory` | `boolean` | Has any previous messages? |
+| `sessionId` | `string` | Thread session ID (derived) |
+| `lastError` | `string \| null` | Last error message |
+
+### Server Handlers: `thread:send` + `thread:history`
+
+**`thread:send`** (ws.ts):
+
+1. Resolves the agent by name
+2. Derives thread session ID: `${parentSession}::thread::${threadId}`
+3. Gets or creates a `Session` for this thread (auto-created on first message)
+4. If session is running → auto-abort with poll-wait (up to 2s)
+5. Builds message with context prefix:
+   ```
+   [THREAD context: Task: "Fix bug" — status: todo, priority: high]
+   [14:23] What does this involve?
+   [Thread instruction: Be concise and helpful.]
+   ```
+6. Optionally overrides agent model
+7. Wires `_wireAgentEvents()` → streams `chat:started/text/thinking/tool/done` with `sessionId` = thread session
+8. After run: persists session metadata + messages to storage
+9. Broadcasts `sessions:updated` and `sessions:created` (if new)
+
+**`thread:history`** (ws.ts):
+
+1. Looks up session by thread session ID
+2. If found → sends `chat:history` with the session's conversation messages
+3. If not found → sends empty `messages: []`
+
+### WebSocket Protocol (Threads)
+
+**Client → Server (`thread:send`):**
+
+```json
+{
+    "action": "thread:send",
+    "agent": "task-agent",
+    "sessionId": "abc123::thread::card:task-1",
+    "parentSession": "abc123",
+    "threadId": "card:task-1",
+    "context": "Task: \"Fix bug\" — status: todo, priority: high",
+    "message": "What does this task involve?",
+    "model": "haiku",
+    "system": "Be concise and helpful."
+}
+```
+
+**Client → Server (`thread:history`):**
+
+```json
+{
+    "action": "thread:history",
+    "agent": "task-agent",
+    "sessionId": "abc123::thread::card:task-1"
+}
+```
+
+**Server → Client (reuses chat events, filtered by sessionId):**
+
+```json
+{ "event": "chat:started", "agent": "task-agent", "sessionId": "abc123::thread::card:task-1" }
+{ "event": "chat:text",    "agent": "task-agent", "sessionId": "abc123::thread::card:task-1", "delta": "This task..." }
+{ "event": "chat:thinking", "agent": "task-agent", "sessionId": "abc123::thread::card:task-1", "thinking": "..." }
+{ "event": "chat:done",    "agent": "task-agent", "sessionId": "abc123::thread::card:task-1", "result": { "text": "...", "cost": 0.001 } }
+{ "event": "chat:history", "agent": "task-agent", "sessionId": "abc123::thread::card:task-1", "messages": [...] }
+```
+
+The `useThread` hook filters events by `sessionId`, so only events for this specific thread are processed. Multiple threads can run concurrently without interfering.
+
+### How Threads Relate to Windows
+
+```
+┌─────────────────────────────────────────────────┐
+│  Agent (task-agent)                              │
+│                                                  │
+│  window = TaskBoardWindow (shared)               │  ← same window for all sessions
+│  prompt = "You are a project manager..."         │  ← same agent prompt
+│                                                  │
+│  ┌─────────────────────────────────────────────┐ │
+│  │  Session: abc123 (main chat)                │ │  ← main conversation
+│  │  History: "Create tasks" → "Done! ..."      │ │
+│  └─────────────────────────────────────────────┘ │
+│                                                  │
+│  ┌─────────────────────────────────────────────┐ │
+│  │  Session: abc123::thread::card:task-1       │ │  ← thread conversation
+│  │  Context: "Task: Fix bug — status: todo"    │ │
+│  │  History: "What's this?" → "This task..."   │ │
+│  └─────────────────────────────────────────────┘ │
+│                                                  │
+│  ┌─────────────────────────────────────────────┐ │
+│  │  Session: abc123::thread::card:task-3       │ │  ← another thread
+│  │  Context: "Task: Deploy — status: done"     │ │
+│  │  History: "Is this blocked?" → "No..."      │ │
+│  └─────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────┘
+```
+
+Key points:
+- The agent sees the **same window** (full board) in all threads — `render()` output is identical
+- The agent uses the **same prompt** (system instruction) + thread `context` prefix
+- Each thread has its **own conversation history** — isolated from main chat and other threads
+- Thread sessions are **persisted** — messages survive server restarts
+- Thread sessions appear in `listSessions()` — they're regular sessions with a derived ID
+
+### Floating Thread Chat UI
+
+The task board example implements a floating chat panel for threads:
+
+```tsx
+// Board.tsx — simplified
+function Board({ sessionId }) {
+    const [threadTask, setThreadTask] = useState<TaskItem | null>(null);
+
+    const handleThread = (task: TaskItem) => setThreadTask(task);
+
+    return (
+        <div>
+            {/* Board columns with cards... */}
+            <Column onThread={handleThread} ... />
+
+            {/* Floating panel — mounts when a task is selected for thread */}
+            {threadTask && (
+                <ThreadPanel
+                    task={threadTask}
+                    sessionId={sessionId}
+                    onClose={() => setThreadTask(null)}
+                />
+            )}
+        </div>
+    );
+}
+```
+
+The `ThreadPanel` component:
+- **Fixed position** at bottom-right of viewport
+- **Maximize/minimize/close** controls
+- **Chat bubble UI** with markdown rendering
+- **Streaming dots** animation while agent responds
+- **Empty state** placeholder when no messages yet
+- **Auto-scrolls** to latest message
+- Uses `useThread()` internally — all state management delegated to the hook
+
+```
+┌──────────────────────────────┐
+│  💬 Fix API bug      thread  │  ← header with task title
+│  ─────────────────────────── │
+│                              │
+│  🗨 Ask anything about this  │  ← empty state
+│     task                     │
+│                              │
+│  ─────────────────────────── │
+│  [Ask about this task...] 📤 │  ← input
+└──────────────────────────────┘
+```
 
 ---
 
