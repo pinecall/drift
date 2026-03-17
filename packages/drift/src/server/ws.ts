@@ -299,6 +299,92 @@ export function createWSHandler(
                 break;
             }
 
+            // ── Threads (contextual mini-chats) ─────
+
+            case 'thread:send': {
+                const agentName = msg.agent || '';
+                const agent = _resolveAgent(agentName);
+                const threadSessionId = msg.sessionId || '';
+                const threadContext = msg.context || '';
+                const threadSystem = msg.system || '';
+
+                // Get or create thread session
+                let session = sessions.get(threadSessionId);
+                let isNewSession = false;
+                if (!session) {
+                    session = new Session(agent, { id: threadSessionId });
+                    sessions.set(threadSessionId, session);
+                    isNewSession = true;
+                }
+
+                // Auto-abort if running
+                if (session.isRunning) {
+                    session.abort();
+                    for (let i = 0; i < 40 && session.isRunning; i++) {
+                        await new Promise(r => setTimeout(r, 50));
+                    }
+                }
+
+                // Build the message with thread context
+                const now = new Date();
+                const ts = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+                const contextPrefix = threadContext ? `[THREAD context: ${threadContext}]\n` : '';
+                const systemSuffix = threadSystem ? `\n[Thread instruction: ${threadSystem}]` : '';
+                const fullMessage = `${contextPrefix}[${ts}] ${msg.message}${systemSuffix}`;
+
+                // Optional model override
+                const originalModel = agent.model;
+                if (msg.model) agent.model = msg.model;
+
+                // Wire events & run
+                const cleanup = _wireAgentEvents(agent, agentName, threadSessionId, broadcast);
+                broadcast({ event: 'chat:started', agent: agentName, sessionId: threadSessionId });
+
+                try {
+                    const result = await session.run(fullMessage);
+                    broadcast({ event: 'chat:done', agent: agentName, sessionId: threadSessionId, result: { text: result.text, cost: result.cost } });
+                } catch (err: any) {
+                    broadcast({ event: 'chat:error', agent: agentName, sessionId: threadSessionId, error: err.message });
+                } finally {
+                    cleanup();
+                    if (msg.model) agent.model = originalModel;
+
+                    // Persist thread session & messages
+                    if (storage && session) {
+                        storage.saveSession(session.toJSON());
+                        storage.saveMessages(threadSessionId, session.conversation.toJSON());
+                    }
+                    broadcast({ event: 'sessions:updated', session: _serializeSession(session!) });
+                }
+
+                if (isNewSession) {
+                    broadcast({ event: 'sessions:created', session: _serializeSession(session!) });
+                }
+                break;
+            }
+
+            case 'thread:history': {
+                const threadSessionId = msg.sessionId || '';
+                const session = sessions.get(threadSessionId);
+                if (session) {
+                    send(ws, {
+                        event: 'chat:history',
+                        sessionId: threadSessionId,
+                        agent: msg.agent,
+                        messages: _formatHistory(session.conversation.messages),
+                    });
+                } else {
+                    // No history yet — empty
+                    send(ws, {
+                        event: 'chat:history',
+                        sessionId: threadSessionId,
+                        agent: msg.agent,
+                        messages: [],
+                    });
+                }
+                break;
+            }
+
             case 'chat:swap': {
                 const sessionId = msg.sessionId || '';
                 const newAgentName = msg.agent || '';

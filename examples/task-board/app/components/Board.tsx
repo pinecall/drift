@@ -1,8 +1,9 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
-import { useWindow, useChat } from 'drift/react'
-import { ArrowRight, Trash2, Circle, LayoutGrid, Wifi, WifiOff, Loader2, CheckCircle2 } from 'lucide-react'
+import { useWindow, useChat, useThread } from 'drift/react'
+import { ArrowRight, Trash2, Circle, LayoutGrid, Wifi, WifiOff, Loader2, CheckCircle2, MessageCircle, X, Minus, Send, Maximize2 } from 'lucide-react'
 import { useDriftContext } from 'drift/react'
 import { T } from '../lib/theme'
+import ReactMarkdown from 'react-markdown'
 
 // ── Types matching the server TaskItem ──
 interface TaskItem {
@@ -50,13 +51,216 @@ const STATUS_CYCLE: Record<string, 'todo' | 'doing' | 'done'> = {
 
 type NudgePhase = 'idle' | 'thinking' | 'streaming' | 'done'
 
+// ── Floating Thread Chat ──
+function ThreadPanel({ task, sessionId }: { task: TaskItem; sessionId: string }) {
+    const thread = useThread({
+        agent: 'task-agent',
+        threadId: `card:${task.id}`,
+        parentSession: sessionId,
+        context: `Task: "${task.title}" — ${task.description} (status: ${task.status}, priority: ${task.priority})`,
+        system: 'You are helping the user understand and work on this specific task. Be concise and helpful.',
+    })
+
+    const [input, setInput] = useState('')
+    const [isMaximized, setIsMaximized] = useState(false)
+    const messagesEndRef = useRef<HTMLDivElement>(null)
+
+    useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }, [thread.messages])
+
+    const handleSend = () => {
+        const text = input.trim()
+        if (!text || thread.isStreaming) return
+        thread.send(text)
+        setInput('')
+    }
+
+    if (!thread.isOpen) {
+        // Minimized pill
+        if (thread.isMinimized) {
+            return (
+                <button
+                    onClick={() => thread.open()}
+                    className="flex items-center gap-1.5 rounded-full cursor-pointer"
+                    style={{
+                        position: 'fixed', bottom: '16px', right: '16px',
+                        background: T.accent, color: '#fff',
+                        padding: '8px 14px', fontSize: '11px',
+                        boxShadow: `0 4px 24px ${T.accent}40`,
+                        zIndex: 100,
+                    }}>
+                    <MessageCircle size={12} />
+                    {task.title}
+                    {thread.hasHistory && <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#fff' }} />}
+                </button>
+            )
+        }
+        return null
+    }
+
+    const panelWidth = isMaximized ? '420px' : '340px'
+    const panelHeight = isMaximized ? '500px' : '380px'
+
+    return (
+        <div style={{
+            position: 'fixed', bottom: '16px', right: '16px',
+            width: panelWidth, height: panelHeight,
+            background: T.surface,
+            border: `1px solid ${T.border}`,
+            borderRadius: '16px',
+            display: 'flex', flexDirection: 'column',
+            boxShadow: `0 8px 40px rgba(0,0,0,0.5), 0 0 20px ${T.accent}08`,
+            zIndex: 100,
+            transition: 'width 0.2s ease, height 0.2s ease',
+            overflow: 'hidden',
+        }}>
+            {/* Header */}
+            <div className="flex items-center shrink-0" style={{
+                padding: '10px 14px',
+                borderBottom: `1px solid ${T.border}`,
+                background: T.surfaceAlt,
+                borderRadius: '16px 16px 0 0',
+                gap: '8px',
+            }}>
+                <MessageCircle size={13} style={{ color: T.accent }} />
+                <span className="flex-1 text-[12px] truncate" style={{ color: T.t1 }}>
+                    {task.title}
+                </span>
+                <span className="text-[10px]" style={{
+                    color: T.accent, background: T.accent + '15',
+                    padding: '1px 6px', borderRadius: '6px',
+                }}>thread</span>
+                <div className="flex items-center gap-0.5">
+                    <button onClick={() => setIsMaximized(v => !v)}
+                        className="p-1 rounded cursor-pointer"
+                        style={{ color: T.t4 }}
+                        onMouseEnter={e => e.currentTarget.style.color = T.t2}
+                        onMouseLeave={e => e.currentTarget.style.color = T.t4}>
+                        <Maximize2 size={11} />
+                    </button>
+                    <button onClick={() => thread.minimize()}
+                        className="p-1 rounded cursor-pointer"
+                        style={{ color: T.t4 }}
+                        onMouseEnter={e => e.currentTarget.style.color = T.t2}
+                        onMouseLeave={e => e.currentTarget.style.color = T.t4}>
+                        <Minus size={11} />
+                    </button>
+                    <button onClick={() => thread.close()}
+                        className="p-1 rounded cursor-pointer"
+                        style={{ color: T.t4 }}
+                        onMouseEnter={e => e.currentTarget.style.color = T.red}
+                        onMouseLeave={e => e.currentTarget.style.color = T.t4}>
+                        <X size={11} />
+                    </button>
+                </div>
+            </div>
+
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto" style={{ padding: '12px 14px' }}>
+                {thread.messages.length === 0 && (
+                    <div className="flex flex-col items-center justify-center h-full text-center" style={{ gap: '8px' }}>
+                        <MessageCircle size={24} style={{ color: T.t4 }} />
+                        <span className="text-[11px]" style={{ color: T.t4 }}>
+                            Ask anything about this task
+                        </span>
+                    </div>
+                )}
+                {thread.messages.map((msg, i) => (
+                    <div key={i} style={{
+                        marginBottom: '10px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start',
+                    }}>
+                        <div style={{
+                            maxWidth: '85%',
+                            padding: '8px 12px',
+                            borderRadius: msg.role === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
+                            background: msg.role === 'user' ? T.accent + '20' : T.surfaceAlt,
+                            border: `1px solid ${msg.role === 'user' ? T.accent + '30' : T.border}`,
+                            fontSize: '12px',
+                            lineHeight: '1.5',
+                            color: T.t1,
+                        }}>
+                            {msg.role === 'assistant' ? (
+                                <div className="prose-thread">
+                                    {msg.parts?.map((part, j) => {
+                                        if (part.type === 'text') {
+                                            return <ReactMarkdown key={j}>{part.content || ''}</ReactMarkdown>
+                                        }
+                                        if (part.type === 'thinking' && part.content) {
+                                            return (
+                                                <div key={j} className="text-[10px] italic" style={{ color: T.t4, marginBottom: '4px' }}>
+                                                    {part.content.slice(0, 100)}...
+                                                </div>
+                                            )
+                                        }
+                                        return null
+                                    })}
+                                    {msg.status === 'streaming' && (
+                                        <span className="inline-flex gap-0.5 ml-1">
+                                            {[0, 100, 200].map(d => (
+                                                <span key={d} className="w-1 h-1 rounded-full animate-bounce" style={{ background: T.accent, animationDelay: `${d}ms` }} />
+                                            ))}
+                                        </span>
+                                    )}
+                                </div>
+                            ) : (
+                                <span>{msg.content}</span>
+                            )}
+                        </div>
+                    </div>
+                ))}
+                <div ref={messagesEndRef} />
+            </div>
+
+            {/* Input */}
+            <div className="shrink-0" style={{
+                padding: '10px 12px',
+                borderTop: `1px solid ${T.border}`,
+                background: T.surfaceAlt,
+                borderRadius: '0 0 16px 16px',
+            }}>
+                <div className="flex items-center" style={{
+                    background: T.surface,
+                    border: `1px solid ${T.border}`,
+                    borderRadius: '10px',
+                    padding: '0 4px 0 12px',
+                }}>
+                    <input
+                        type="text"
+                        value={input}
+                        onChange={e => setInput(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && handleSend()}
+                        placeholder="Ask about this task..."
+                        className="flex-1 bg-transparent outline-none text-[12px]"
+                        style={{ color: T.t1, padding: '8px 0', border: 'none' }}
+                        disabled={thread.isStreaming}
+                    />
+                    <button onClick={handleSend}
+                        className="p-1.5 rounded-md cursor-pointer"
+                        style={{
+                            color: input.trim() ? T.accent : T.t4,
+                            opacity: thread.isStreaming ? 0.5 : 1,
+                        }}
+                        disabled={thread.isStreaming || !input.trim()}>
+                        {thread.isStreaming ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+                    </button>
+                </div>
+            </div>
+        </div>
+    )
+}
+
 // ── Task Card ──
-function TaskCard({ task, onMove, onDelete, onCyclePriority, onNudge, isSelected, isBlurred, nudgePhase }: {
+function TaskCard({ task, onMove, onDelete, onCyclePriority, onNudge, onThread, isSelected, isBlurred, nudgePhase }: {
     task: TaskItem
     onMove: (id: string, status: 'todo' | 'doing' | 'done') => void
     onDelete: (id: string) => void
     onCyclePriority: (id: string) => void
     onNudge: (task: TaskItem) => void
+    onThread: (task: TaskItem) => void
     isSelected: boolean
     isBlurred: boolean
     nudgePhase: NudgePhase
@@ -133,6 +337,14 @@ function TaskCard({ task, onMove, onDelete, onCyclePriority, onNudge, isSelected
                             }
                         }
                     }}>
+                    <button onClick={e => { e.stopPropagation(); onThread(task) }}
+                        className="p-1 rounded-md cursor-pointer transition-colors"
+                        style={{ color: T.t4 }}
+                        onMouseEnter={e => e.currentTarget.style.color = T.accent}
+                        onMouseLeave={e => e.currentTarget.style.color = T.t4}
+                        title="Open thread">
+                        <MessageCircle size={11} />
+                    </button>
                     <button onClick={e => { e.stopPropagation(); onMove(task.id, nextStatus) }}
                         className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] cursor-pointer transition-colors"
                         style={{ color: T.t3, background: T.surface }}
@@ -203,13 +415,14 @@ function TaskCard({ task, onMove, onDelete, onCyclePriority, onNudge, isSelected
 }
 
 // ── Column ──
-function Column({ status, tasks, onMove, onDelete, onCyclePriority, onNudge, selectedId, nudgePhase }: {
+function Column({ status, tasks, onMove, onDelete, onCyclePriority, onNudge, onThread, selectedId, nudgePhase }: {
     status: 'todo' | 'doing' | 'done'
     tasks: TaskItem[]
     onMove: (id: string, status: 'todo' | 'doing' | 'done') => void
     onDelete: (id: string) => void
     onCyclePriority: (id: string) => void
     onNudge: (task: TaskItem) => void
+    onThread: (task: TaskItem) => void
     selectedId: string | null
     nudgePhase: NudgePhase
 }) {
@@ -236,7 +449,8 @@ function Column({ status, tasks, onMove, onDelete, onCyclePriority, onNudge, sel
                 )}
                 {tasks.map(task => (
                     <TaskCard key={task.id} task={task}
-                        onMove={onMove} onDelete={onDelete} onCyclePriority={onCyclePriority} onNudge={onNudge}
+                        onMove={onMove} onDelete={onDelete} onCyclePriority={onCyclePriority}
+                        onNudge={onNudge} onThread={onThread}
                         isSelected={selectedId === task.id}
                         isBlurred={selectedId !== null && selectedId !== task.id}
                         nudgePhase={selectedId === task.id ? nudgePhase : 'idle'} />
@@ -255,16 +469,15 @@ export function Board({ sessionId }: { sessionId: string }) {
     const tasks = items as TaskItem[]
     const [selectedId, setSelectedId] = useState<string | null>(null)
     const [nudgePhase, setNudgePhase] = useState<NudgePhase>('idle')
+    const [threadTask, setThreadTask] = useState<TaskItem | null>(null)
     const prevStreamingRef = useRef(false)
 
     // Track nudge phases based on isStreaming
     useEffect(() => {
         if (isStreaming && !prevStreamingRef.current && selectedId) {
-            // Streaming just started
             setNudgePhase('streaming')
         }
         if (!isStreaming && prevStreamingRef.current && selectedId) {
-            // Streaming just ended
             setNudgePhase('done')
             setTimeout(() => {
                 setNudgePhase('idle')
@@ -280,7 +493,6 @@ export function Board({ sessionId }: { sessionId: string }) {
         for (const t of tasks) {
             if (g[t.status]) g[t.status].push(t)
         }
-        // Sort by priority within each column
         const priorityOrder = { high: 0, medium: 1, low: 2 }
         for (const col of Object.values(g)) {
             col.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority])
@@ -303,7 +515,6 @@ export function Board({ sessionId }: { sessionId: string }) {
         const newLabel = STATUS_CONFIG[newStatus].label
         updateItem(id, { status: newStatus } as Partial<TaskItem>)
         logActivity(`Moved task from ${oldLabel} to ${newLabel}`, id, task.title, `${oldLabel} → ${newLabel}`)
-        // Nudge on move
         setSelectedId(id)
         setNudgePhase('thinking')
         nudge(
@@ -321,7 +532,8 @@ export function Board({ sessionId }: { sessionId: string }) {
             setSelectedId(null)
             setNudgePhase('idle')
         }
-    }, [tasks, removeItem, logActivity, selectedId])
+        if (threadTask?.id === id) setThreadTask(null)
+    }, [tasks, removeItem, logActivity, selectedId, threadTask])
 
     const handleCyclePriority = useCallback((id: string) => {
         const task = tasks.find(t => t.id === id)
@@ -334,7 +546,6 @@ export function Board({ sessionId }: { sessionId: string }) {
 
     const handleNudge = useCallback((task: TaskItem) => {
         if (selectedId === task.id) {
-            // Deselect
             setSelectedId(null)
             setNudgePhase('idle')
             return
@@ -347,6 +558,10 @@ export function Board({ sessionId }: { sessionId: string }) {
             { system: 'Be very brief, 1-2 sentences max. No tool calls.' }
         )
     }, [nudge, selectedId])
+
+    const handleThread = useCallback((task: TaskItem) => {
+        setThreadTask(task)
+    }, [])
 
     return (
         <div className="flex-1 flex flex-col min-h-0" style={{ background: T.bg }}>
@@ -368,20 +583,23 @@ export function Board({ sessionId }: { sessionId: string }) {
 
             {/* Board columns */}
             <div className="flex-1 min-h-0 flex gap-6" style={{ padding: '24px' }}>
-                <Column status="todo" tasks={grouped.todo} onMove={handleMove} onDelete={handleDelete} onCyclePriority={handleCyclePriority} onNudge={handleNudge} selectedId={selectedId} nudgePhase={nudgePhase} />
-                <Column status="doing" tasks={grouped.doing} onMove={handleMove} onDelete={handleDelete} onCyclePriority={handleCyclePriority} onNudge={handleNudge} selectedId={selectedId} nudgePhase={nudgePhase} />
-                <Column status="done" tasks={grouped.done} onMove={handleMove} onDelete={handleDelete} onCyclePriority={handleCyclePriority} onNudge={handleNudge} selectedId={selectedId} nudgePhase={nudgePhase} />
+                <Column status="todo" tasks={grouped.todo} onMove={handleMove} onDelete={handleDelete} onCyclePriority={handleCyclePriority} onNudge={handleNudge} onThread={handleThread} selectedId={selectedId} nudgePhase={nudgePhase} />
+                <Column status="doing" tasks={grouped.doing} onMove={handleMove} onDelete={handleDelete} onCyclePriority={handleCyclePriority} onNudge={handleNudge} onThread={handleThread} selectedId={selectedId} nudgePhase={nudgePhase} />
+                <Column status="done" tasks={grouped.done} onMove={handleMove} onDelete={handleDelete} onCyclePriority={handleCyclePriority} onNudge={handleNudge} onThread={handleThread} selectedId={selectedId} nudgePhase={nudgePhase} />
             </div>
 
             {/* Footer */}
             <div className="shrink-0 flex items-center justify-between" style={{ borderTop: `1px solid ${T.border}`, padding: '8px 24px', background: T.surface }}>
                 <span className="text-[10px]" style={{ color: T.t4 }}>
-                    Click card to inspect · Hover for actions · Agent sees all changes
+                    Click card to inspect · <MessageCircle size={9} style={{ display: 'inline', verticalAlign: 'middle' }} /> to chat · Agent sees all changes
                 </span>
                 <span className="text-[10px]" style={{ color: T.t4 }}>
                     {(state?.activity?.length || 0)} actions logged
                 </span>
             </div>
+
+            {/* Floating Thread Chat */}
+            {threadTask && <ThreadPanel task={threadTask} sessionId={sessionId} />}
         </div>
     )
 }
