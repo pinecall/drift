@@ -22,6 +22,10 @@ export { render, Fragment } from './jsx-runtime.ts';
 export { SQLiteStorage } from './core/sqlite-storage.ts';
 export type { Storage, SessionData } from './core/storage.ts';
 
+// Auth (pluggable authentication)
+export { NoAuth, TokenAuth } from './core/auth.ts';
+export type { DriftAuth, DriftUser } from './core/auth.ts';
+
 // Windows (domain-specific)
 export { CodebaseWindow, type FileEntry, type CodebaseWindowOptions } from './windows/codebase-window.tsx';
 

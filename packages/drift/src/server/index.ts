@@ -21,6 +21,7 @@ import type { Window } from '../core/window.ts';
 import type { ChildProcess } from 'node:child_process';
 import type { Storage } from '../core/storage.ts';
 import { SQLiteStorage } from '../core/sqlite-storage.ts';
+import type { DriftAuth } from '../core/auth.ts';
 
 // ── MIME types for static serving ───────────────────
 const MIME: Record<string, string> = {
@@ -41,9 +42,15 @@ const MIME: Record<string, string> = {
     '.map': 'application/json',
 };
 
+export interface DriftServerOptions extends Partial<DriftConfig> {
+    storage?: Storage | boolean;
+    auth?: DriftAuth;
+}
+
 export class DriftServer {
     readonly config: DriftConfig;
     readonly storage: Storage | null;
+    readonly auth: DriftAuth | undefined;
     private _httpServer: http.Server | null = null;
     private _ws: ReturnType<typeof createWSHandler> | null = null;
     private _agents: LoadedAgent[] = [];
@@ -51,12 +58,14 @@ export class DriftServer {
     private _uiDir: string | null = null;
     private _viteProcess: ChildProcess | null = null;
 
-    constructor(configOrDir?: Partial<DriftConfig & { storage?: Storage | boolean }> | string) {
+    constructor(configOrDir?: DriftServerOptions | string) {
         if (typeof configOrDir === 'string') {
             this.config = loadConfig(configOrDir);
             this.storage = new SQLiteStorage(path.resolve(configOrDir, '.drift/drift.db'));
+            this.auth = undefined;
         } else {
             this.config = { ...loadConfig(), ...configOrDir };
+            this.auth = configOrDir?.auth;
             // storage: false → disabled, Storage instance → use it, undefined/true → SQLite default
             if (configOrDir && configOrDir.storage === false) {
                 this.storage = null;
@@ -99,7 +108,7 @@ export class DriftServer {
         });
 
         // 5. WebSocket handler
-        this._ws = createWSHandler(this._httpServer, this._agents, this._windows, this.storage || undefined);
+        this._ws = createWSHandler(this._httpServer, this._agents, this._windows, this.storage || undefined, this.auth);
 
         // 6. Pre-load files from config
         if (this.config.preload.length > 0) {
@@ -234,6 +243,45 @@ export class DriftServer {
 
         res.writeHead(404);
         res.end('Not found');
+    }
+
+    /**
+     * Attach DriftServer to an existing HTTP server.
+     * Sets up WebSocket handler + agent loading without creating its own server.
+     * Use this to embed Drift in Next.js, Express, Fastify, etc.
+     * 
+     *   const drift = new DriftServer({ auth: myAuth });
+     *   await drift.attach(existingHttpServer);
+     */
+    async attach(httpServer: http.Server): Promise<void> {
+        // 1. Load agents
+        this._agents = await loadAgents(this.config);
+
+        // 2. Collect shared windows
+        for (const { agent } of this._agents) {
+            if (agent.window) {
+                const className = agent.window.constructor.name;
+                if (!this._windows.has(className)) {
+                    this._windows.set(className, agent.window);
+                }
+            }
+        }
+
+        // 3. Pre-load files from config
+        if (this.config.preload.length > 0) {
+            this.openFiles(this.config.preload);
+        }
+
+        // 4. WebSocket handler on the provided server
+        this._httpServer = httpServer;
+        this._ws = createWSHandler(httpServer, this._agents, this._windows, this.storage || undefined, this.auth);
+
+        console.log(`\n  ⚡ Drift attached to existing server`);
+        console.log(`  Agents (${this._agents.length}): ${this._agents.map(a => a.name).join(', ')}`);
+        if (this._windows.size > 0) {
+            console.log(`  Windows (${this._windows.size}): ${[...this._windows.keys()].join(', ')}`);
+        }
+        console.log('');
     }
 
     private _serveFile(res: http.ServerResponse, filePath: string): void {

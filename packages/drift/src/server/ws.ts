@@ -17,7 +17,7 @@
 
 import type { WebSocket } from 'ws';
 import { WebSocketServer } from 'ws';
-import type { Server as HttpServer } from 'node:http';
+import type { Server as HttpServer, IncomingMessage } from 'node:http';
 import type { Agent } from '../core/agent.ts';
 import { Session } from '../core/session.ts';
 import type { Window } from '../core/window.ts';
@@ -26,6 +26,7 @@ import type { LoadedAgent } from './config.ts';
 import { listModels, getModel } from '../provider/models.ts';
 import type { Effort } from '../types.ts';
 import type { Storage } from '../core/storage.ts';
+import { NoAuth, type DriftAuth, type DriftUser } from '../core/auth.ts';
 
 // ── Types ───────────────────────────────────────────
 
@@ -42,11 +43,14 @@ export function createWSHandler(
     agents: LoadedAgent[],
     windows: Map<string, Window<any, any>>,
     storage?: Storage,
+    auth?: DriftAuth,
 ) {
     const wss = new WebSocketServer({ server: httpServer });
     const clients = new Set<WebSocket>();
+    const clientUsers = new WeakMap<WebSocket, DriftUser>();
     const agentMap = new Map<string, Agent>(agents.map(a => [a.name, a.agent]));
     const sessions = new Map<string, Session>();
+    const resolvedAuth: DriftAuth = auth || new NoAuth();
 
     // Restore sessions from storage on startup
     if (storage) {
@@ -76,8 +80,18 @@ export function createWSHandler(
 
     // ── Connection handler ──────────────────────────
 
-    wss.on('connection', (ws: WebSocket) => {
+    wss.on('connection', async (ws: WebSocket, req: IncomingMessage) => {
+        // ── Auth gate ──
+        let user: DriftUser;
+        try {
+            user = await resolvedAuth.authenticate(req);
+        } catch (err: any) {
+            ws.close(4001, err.message || 'Unauthorized');
+            return;
+        }
+
         clients.add(ws);
+        clientUsers.set(ws, user);
 
         // Send agent list on connect
         send(ws, {
@@ -119,6 +133,10 @@ export function createWSHandler(
             }
 
             try {
+                // Per-message authorization
+                if (resolvedAuth.authorize) {
+                    await resolvedAuth.authorize(clientUsers.get(ws)!, msg.action, msg);
+                }
                 await handleMessage(ws, msg);
             } catch (err: any) {
                 send(ws, { event: 'error', action: msg.action, error: err.message });

@@ -1905,6 +1905,86 @@ import type {
 
 ---
 
+## Authentication
+
+Pluggable auth — same pattern as Storage. Apps bring their own auth (JWT, NextAuth, Clerk, etc.).
+
+```typescript
+// No auth (default — backward-compatible)
+const server = new DriftServer();
+
+// Token-based (JWT, API key, etc.)
+const server = new DriftServer({
+    auth: new TokenAuth(token => {
+        const decoded = jwt.verify(token, SECRET);
+        return { id: decoded.sub, role: decoded.role };
+    }),
+});
+
+// Custom (NextAuth, Clerk, etc.)
+const server = new DriftServer({
+    auth: {
+        authenticate(req) {
+            const session = getServerSession(req);
+            if (!session) throw new Error('Not authenticated');
+            return { id: session.user.id, email: session.user.email };
+        },
+        // Optional: per-action authorization
+        authorize(user, action) {
+            if (action === 'chat:settings' && user.role !== 'admin') {
+                throw new Error('Admin only');
+            }
+            return true;
+        },
+    },
+});
+```
+
+`TokenAuth` extracts tokens from: URL param (`?token=xxx`), `Authorization: Bearer xxx` header, or `Sec-WebSocket-Protocol` header.
+
+Unauthorized connections are rejected with WebSocket close code `4001`.
+
+---
+
+## Embedding (attach)
+
+Embed DriftServer in an existing HTTP server (Next.js, Express, Fastify, etc.):
+
+```typescript
+import { createServer } from 'http';
+import { DriftServer, TokenAuth } from 'drift';
+
+// Your existing HTTP server
+const httpServer = createServer(myApp);
+
+// Attach Drift (WS only, no listen)
+const drift = new DriftServer({ auth: new TokenAuth(verify) });
+await drift.attach(httpServer);
+
+httpServer.listen(3000);
+```
+
+### Next.js Custom Server
+
+```typescript
+import { createServer } from 'http';
+import next from 'next';
+import { DriftServer } from 'drift';
+
+const app = next({ dev: true });
+const handle = app.getRequestHandler();
+
+await app.prepare();
+const httpServer = createServer((req, res) => handle(req, res));
+
+const drift = new DriftServer();
+await drift.attach(httpServer);
+
+httpServer.listen(3000);
+```
+
+---
+
 ## Persistence
 
 Sessions, conversation history, and window state are persisted to SQLite by default. Survives server restarts.
@@ -1983,7 +2063,7 @@ drift/
 │   └── drift.ts                  # CLI — `drift server`, `drift dev`
 ├── test/
 │   ├── run.ts                    # Zero-dep test runner
-│   ├── unit/                     # 156 unit tests
+│   ├── unit/                     # 165 unit tests
 │   └── integration/              # 11 integration tests
 ├── examples/
 │   ├── basic/                    # 8 standalone script examples
@@ -2020,7 +2100,7 @@ node --import tsx examples/basic/<file>.ts
 
 ```bash
 nvm use 24                                  # Node 24 required
-npm test                                    # 156 unit tests (~0.5s)
+npm test                                    # 165 unit tests (~0.5s)
 npm run test:integration                    # + 11 real Haiku API tests (~30s, needs ANTHROPIC_API_KEY)
 npm run test:verbose                        # Show per-assertion details
 npm run typecheck                           # tsc --noEmit
