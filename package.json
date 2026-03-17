@@ -3,11 +3,11 @@
     "version": "0.1.0",
     "description": "Hyper-minimalist TypeScript framework for AI agents with tool decorators",
     "type": "module",
-    "main": "src/index.ts",
+    "main": "packages/drift/src/index.ts",
     "exports": {
-        ".": "./src/index.ts",
-        "./server": "./src/server/index.ts",
-        "./react": "./drift-react/src/index.ts"
+        ".": "./packages/drift/src/index.ts",
+        "./server": "./packages/drift/src/server/index.ts",
+        "./react": "./packages/drift-react/src/index.ts"
     },
     "bin": {
         "drift": "./bin/drift.ts"

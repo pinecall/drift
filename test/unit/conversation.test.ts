@@ -4,7 +4,7 @@
  * Tests message management, dedup, tool result grouping, and buildMessages.
  */
 
-import { Conversation } from '../../src/core/conversation.ts';
+import { Conversation } from '../../packages/drift/src/core/conversation.ts';
 
 export const name = 'Conversation';
 

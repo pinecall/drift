@@ -1881,71 +1881,39 @@ import type {
 
 ```
 drift/
-├── src/
-│   ├── index.ts                  # Public API barrel exports
-│   ├── types.ts                  # All type definitions
-│   ├── core/
-│   │   ├── agent.ts              # Agent class — agentic loop, streaming, tool execution
-│   │   ├── cache.ts              # Cache — Anthropic prompt caching breakpoints
-│   │   ├── conversation.ts       # Message history management + smart trim
-│   │   ├── session.ts            # Session — owns Conversation, delegates to Agent
-│   │   ├── mcp.ts                # MCP client — stdio/HTTP/SSE multi-transport
-│   │   ├── window.ts             # Window<T,S> — generic reactive context base class
-│   │   ├── pricing.ts            # Per-session cost tracking
-│   │   └── prompt.ts             # Prompt file resolution (class name → kebab → file)
-│   ├── agents/                   # 4 built-in agents
-│   │   ├── developer.ts          # DeveloperAgent — all 16 tools
-│   │   ├── developer-lite.ts     # DeveloperLiteAgent — edit + filesystem
-│   │   ├── playwright.ts         # PlaywrightAgent — Playwright MCP + file tools
-│   │   └── researcher.ts         # ResearcherAgent — read-only investigation
-│   ├── server/                   # DriftServer — HTTP + WebSocket
-│   │   ├── index.ts              # DriftServer class, startDev(), static file serving
-│   │   ├── config.ts             # drift.config.json loader, agent/window auto-discovery
-│   │   ├── ws.ts                 # WebSocket protocol handler (chat, sessions, window, settings)
-│   │   └── vite-dev.ts           # Vite dev server spawner for `drift dev`
-│   ├── provider/
-│   │   ├── provider.ts           # Anthropic API client wrapper
-│   │   └── models.ts             # Model configs, thinking, beta headers
-│   ├── decorators/
-│   │   └── tool.ts               # @tool decorator + ToolRegistry + defineTool
-│   ├── windows/                  # Domain-specific window subclasses
-│   │   └── codebase-window.ts    # CodebaseWindow — files with numbered lines
-│   └── tools/                    # 16 built-in tools (3 categories)
-│       ├── index.ts              # Tool loader + selective registration
-│       ├── edit/                 # replace, insert_after, insert_before
-│       ├── filesystem/           # create_file, delete_file, open_files, close_files, find_by_name, grep_search, list_dir, project_tree
-│       └── shell/                # shell_execute, shell_start, shell_read, shell_write, shell_stop
-├── drift-react/                  # React hooks package (drift/react)
-│   ├── src/
-│   │   ├── index.ts              # Public API barrel exports
-│   │   ├── provider.tsx          # DriftProvider — WebSocket context + agent sync
-│   │   ├── use-chat.ts           # useChat() — streaming, tools, sessions, config
-│   │   ├── use-sessions.ts       # useSessions() — session list management
-│   │   ├── use-window.ts         # useWindow() — reactive window items + state
-│   │   ├── use-drift.ts          # useDrift() — connection status + agent list
-│   │   └── types.ts              # AgentInfo, AgentConfig, ChatMessage, ToolCallInfo, etc.
-│   ├── tsconfig.json
-│   └── package.json
+├── packages/
+│   ├── drift/                    # Core framework
+│   │   └── src/
+│   │       ├── index.ts          # Public API barrel exports
+│   │       ├── types.ts          # All type definitions
+│   │       ├── core/             # Agent, Session, Conversation, Window, Cache, Pricing, Prompt
+│   │       ├── agents/           # 4 built-in agents (Developer, DeveloperLite, Playwright, Researcher)
+│   │       ├── server/           # DriftServer, WebSocket handler, config loader, vite-dev
+│   │       ├── provider/         # Anthropic API client + model configs
+│   │       ├── decorators/       # @tool decorator + ToolRegistry
+│   │       ├── windows/          # CodebaseWindow
+│   │       └── tools/            # 16 built-in tools (edit, filesystem, shell)
+│   └── drift-react/              # React hooks (drift/react)
+│       └── src/
+│           ├── index.ts          # Public API barrel exports
+│           ├── provider.tsx      # DriftProvider — WebSocket context
+│           ├── use-chat.ts       # useChat() — streaming, tools, sessions
+│           ├── use-sessions.ts   # useSessions() — session lifecycle
+│           ├── use-window.ts     # useWindow() — reactive window state
+│           ├── use-drift.ts      # useDrift() — connection + agents
+│           └── types.ts          # Shared types
 ├── bin/
 │   └── drift.ts                  # CLI — `drift server`, `drift dev`
 ├── test/
 │   ├── run.ts                    # Zero-dep test runner
-│   ├── helpers/
-│   │   ├── mock-stream.ts        # Fake Anthropic streams for testing
-│   │   └── agent-factory.ts      # Test agent builder
-│   ├── unit/                     # 86 unit tests (12 suites)
-│   └── integration/              # 11 integration tests — real Haiku API (2 suites)
+│   ├── unit/                     # 123 unit tests
+│   └── integration/              # 11 integration tests
 ├── examples/                     # 8 runnable examples + 1 React UI
 │   ├── 01-quick.ts … 08-server.ts
-│   └── with-react-tasks/         # Task board demo — bidirectional window reactivity + session sidebar
-│       ├── agents/task-agent.ts  # Agent with create/move/update/delete task tools
-│       ├── windows/task-window.ts # Custom Window with user activity tracking
-│       ├── src/components/       # Board (3-col kanban) + Chat (parts-based)
-│       ├── server.ts             # DriftServer on port 3200
-│       └── drift.config.json
+│   └── with-react-tasks/         # Task board demo + session sidebar
 ├── .nvmrc                        # Node 24
-├── package.json
-├── tsconfig.json                 # ES2024, allowImportingTsExtensions
+├── package.json                  # Single npm package with subpath exports
+├── tsconfig.json
 └── README.md
 ```
 

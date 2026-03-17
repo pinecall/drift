@@ -2,8 +2,8 @@
  * DriftServer — Unit Tests
  * Tests config loading, agent discovery, and server lifecycle.
  */
-import { loadConfig, loadAgents, listBuiltinAgents, type DriftConfig } from '../../src/server/config.ts';
-import { DriftServer } from '../../src/server/index.ts';
+import { loadConfig, loadAgents, listBuiltinAgents, type DriftConfig } from '../../packages/drift/src/server/config.ts';
+import { DriftServer } from '../../packages/drift/src/server/index.ts';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';

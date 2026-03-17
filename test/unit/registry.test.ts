@@ -4,8 +4,8 @@
  * Tests tool registration, schema generation, filtering, and execution.
  */
 
-import { ToolRegistry } from '../../src/decorators/tool.ts';
-import type { ToolDefinition } from '../../src/types.ts';
+import { ToolRegistry } from '../../packages/drift/src/decorators/tool.ts';
+import type { ToolDefinition } from '../../packages/drift/src/types.ts';
 
 export const name = 'ToolRegistry';
 

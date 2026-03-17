@@ -7,7 +7,7 @@
  *   drift server --port 4000  — custom port
  */
 
-import { DriftServer } from '../src/server/index.ts';
+import { DriftServer } from '../packages/drift/src/server/index.ts';
 
 const args = process.argv.slice(2);
 const command = args[0];

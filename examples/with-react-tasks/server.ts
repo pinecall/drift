@@ -11,7 +11,7 @@
  *   → http://localhost:3200
  */
 
-import { DriftServer } from '../../src/server/index.ts';
+import { DriftServer } from '../../packages/drift/src/server/index.ts';
 
 const server = new DriftServer(import.meta.dirname!);
 await server.start();

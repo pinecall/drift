@@ -4,7 +4,7 @@
  * Tests smart trim, auto-trim, and orphan cleanup.
  */
 
-import { Conversation } from '../../src/core/conversation.ts';
+import { Conversation } from '../../packages/drift/src/core/conversation.ts';
 
 export const name = 'Conversation Trim';
 

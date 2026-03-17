@@ -4,8 +4,8 @@
  * Tests cost calculation, cache savings, and model switching.
  */
 
-import { Pricing } from '../../src/core/pricing.ts';
-import { getModel } from '../../src/provider/models.ts';
+import { Pricing } from '../../packages/drift/src/core/pricing.ts';
+import { getModel } from '../../packages/drift/src/provider/models.ts';
 
 export const name = 'Pricing';
 

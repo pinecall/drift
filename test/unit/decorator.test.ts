@@ -6,7 +6,7 @@
  * so we construct instances before checking metadata.
  */
 
-import { tool, getToolMetadata, ToolRegistry, defineTool } from '../../src/decorators/tool.ts';
+import { tool, getToolMetadata, ToolRegistry, defineTool } from '../../packages/drift/src/decorators/tool.ts';
 
 export const name = 'Tool Decorator';
 

@@ -7,7 +7,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import replace from '../../src/tools/edit/replace.ts';
+import replace from '../../packages/drift/src/tools/edit/replace.ts';
 
 export const name = 'Replace Tool';
 

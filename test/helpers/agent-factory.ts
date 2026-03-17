@@ -5,8 +5,8 @@
  * Uses Haiku for cheap, fast API calls (~$0.001 per test).
  */
 
-import { Agent } from '../../src/core/agent.ts';
-import type { AgentOptions } from '../../src/types.ts';
+import { Agent } from '../../packages/drift/src/core/agent.ts';
+import type { AgentOptions } from '../../packages/drift/src/types.ts';
 
 interface TestAgentOptions {
     cwd?: string;

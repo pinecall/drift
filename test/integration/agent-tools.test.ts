@@ -7,7 +7,7 @@
  * Requires ANTHROPIC_API_KEY env var.
  */
 
-import { Agent, tool, DeveloperAgent } from '../../src/index.ts';
+import { Agent, tool, DeveloperAgent } from '../../packages/drift/src/index.ts';
 
 export const name = 'Integration — Haiku';
 

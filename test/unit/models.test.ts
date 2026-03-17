@@ -4,7 +4,7 @@
  * Tests model resolution, thinking config, and beta headers.
  */
 
-import { getModel, getModelById, listModels, buildThinkingConfig, getBetaHeaders, MODELS } from '../../src/provider/models.ts';
+import { getModel, getModelById, listModels, buildThinkingConfig, getBetaHeaders, MODELS } from '../../packages/drift/src/provider/models.ts';
 
 export const name = 'Models';
 

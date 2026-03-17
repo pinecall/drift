@@ -10,7 +10,7 @@
  * Run: node --import tsx examples/04-builtin-tools.ts
  */
 
-import { Agent } from '../src/index.ts';
+import { Agent } from '../packages/drift/src/index.ts';
 
 class CodeReviewAgent extends Agent {
     model = 'haiku';

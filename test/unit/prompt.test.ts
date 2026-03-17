@@ -6,7 +6,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { classNameToKebab, resolvePrompt } from '../../src/core/prompt.ts';
+import { classNameToKebab, resolvePrompt } from '../../packages/drift/src/core/prompt.ts';
 
 export const name = 'Prompt Resolver';
 

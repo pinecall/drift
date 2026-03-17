@@ -4,7 +4,7 @@
  * Tests the Cache class: breakpoint placement on system prompts and tools.
  */
 
-import { Cache } from '../../src/core/cache.ts';
+import { Cache } from '../../packages/drift/src/core/cache.ts';
 
 export const name = 'Cache';
 

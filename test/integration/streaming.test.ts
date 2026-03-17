@@ -6,7 +6,7 @@
  * Tests streaming-specific features with real API calls.
  */
 
-import { Agent, tool } from '../../src/index.ts';
+import { Agent, tool } from '../../packages/drift/src/index.ts';
 
 export const name = 'Integration — Streaming';
 

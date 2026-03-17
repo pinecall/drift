@@ -4,8 +4,8 @@
  * Tests that all 16 built-in tools load and register correctly.
  */
 
-import { ToolRegistry } from '../../src/decorators/tool.ts';
-import { registerBuiltinTools, ALL_TOOLS } from '../../src/tools/index.ts';
+import { ToolRegistry } from '../../packages/drift/src/decorators/tool.ts';
+import { registerBuiltinTools, ALL_TOOLS } from '../../packages/drift/src/tools/index.ts';
 
 export const name = 'Built-in Tools';
 
