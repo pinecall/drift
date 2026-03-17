@@ -1271,19 +1271,47 @@ class TradingWindow extends Window<Position, PortfolioState> {
         );
     }
 }
+```
 
-class TradingAgent extends Agent {
-    window = new TradingWindow();
+#### JSX Rendering
 
-    @tool('Buy stock', { symbol: { type: 'string' }, qty: { type: 'number' } })
-    async buy({ symbol, qty }) {
-        const price = await fetchPrice(symbol);
-        this.window.add(symbol, { id: symbol, symbol, qty, entryPrice: price, currentPrice: price, pnl: 0 });
-        this.window.setState({ balance: this.window.state.balance - price * qty });
-        return { success: true, result: `Bought ${qty} ${symbol} @ $${price}` };
+Window `render()` methods can use **TSX syntax** with Drift's built-in JSX runtime — no React required. Name the file `.tsx` and add the pragma:
+
+```tsx
+/** @jsx jsx */
+/** @jsxFrag Fragment */
+import { Window, type WindowItem, render } from 'drift';
+import { jsx, Fragment } from 'drift/jsx-runtime';
+
+class TradingWindow extends Window<Position, PortfolioState> {
+    render(): string {
+        return render(
+            <window name="portfolio">
+                <line>Balance: ${this.state.balance.toLocaleString()} | Strategy: {this.state.strategy}</line>
+                <br />
+                {this.list().map(p => (
+                    <line>  {p.symbol}: {p.qty} @ ${p.entryPrice} → ${p.currentPrice} ({p.pnl > 0 ? '+' : ''}${p.pnl.toFixed(2)})</line>
+                ))}
+            </window>
+        );
     }
 }
 ```
+
+**Built-in JSX tags:**
+
+| Tag | Output |
+|---|---|
+| `<window name="x">` | `<x>\n...\n</x>` — named XML wrapper |
+| `<section title="x">` | `── x ──\n...` — titled section |
+| `<text>` | Renders children as-is (no wrapping) |
+| `<line>` | Children + newline |
+| `<br />` | Newline |
+| `<hr />` | `────────────────────────` |
+| `<>...</>` | Fragment (no wrapper) |
+| `<other>` | `<other>\n...\n</other>` (generic XML) |
+
+The JSX runtime (`packages/drift/src/jsx-runtime.ts`) is ~60 lines and renders to strings — no DOM, no React, just formatted text for agent prompts.
 
 ### Serialization
 

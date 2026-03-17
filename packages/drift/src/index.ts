@@ -15,6 +15,9 @@ export { Pricing } from './core/pricing.ts';
 export { Provider } from './provider/provider.ts';
 export { DriftServer } from './server/index.ts';
 
+// JSX runtime for window rendering
+export { render, Fragment } from './jsx-runtime.ts';
+
 // Windows (domain-specific)
 export { CodebaseWindow, type FileEntry, type CodebaseWindowOptions } from './windows/codebase-window.ts';
 

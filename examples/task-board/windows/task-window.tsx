@@ -1,5 +1,7 @@
+/** @jsx jsx */
+/** @jsxFrag Fragment */
 /**
- * TaskBoardWindow — Reactive task board for the demo
+ * TaskBoardWindow — Reactive task board with JSX rendering
  * 
  * Items: tasks with title, description, status, priority
  * State: filter + user activity log
@@ -7,7 +9,8 @@
  * The agent sees the full board + recent user actions via render().
  */
 
-import { Window, type WindowItem } from '../../../src/core/window.ts';
+import { Window, type WindowItem } from '../../../packages/drift/src/core/window.ts';
+import { jsx, Fragment, render } from '../../../packages/drift/src/jsx-runtime.ts';
 
 // ── Types ──
 
@@ -35,6 +38,8 @@ export interface BoardState {
 
 // ── Window ──
 
+const priorityEmoji = { high: '🔴', medium: '🟡', low: '🟢' } as const;
+
 export class TaskBoardWindow extends Window<TaskItem, BoardState> {
     constructor() {
         super({ filter: 'all', userActivity: [] });
@@ -55,46 +60,52 @@ export class TaskBoardWindow extends Window<TaskItem, BoardState> {
 
     override render(): string {
         const tasks = this.list();
-        if (tasks.length === 0) return '\n\n<task-board>\nThe board is empty. Create some tasks!\n</task-board>';
+        if (tasks.length === 0) {
+            return render(<window name="task-board"><text>The board is empty. Create some tasks!</text></window>);
+        }
 
         const groups = { todo: [] as TaskItem[], doing: [] as TaskItem[], done: [] as TaskItem[] };
         for (const t of tasks) groups[t.status].push(t);
 
-        const priorityEmoji = { high: '🔴', medium: '🟡', low: '🟢' };
-
-        let board = '\n\n<task-board>\n';
-        board += `Total: ${tasks.length} tasks — ${groups.todo.length} todo, ${groups.doing.length} in progress, ${groups.done.length} done\n\n`;
-
-        for (const [status, label] of [['todo', '📋 Todo'], ['doing', '🔄 In Progress'], ['done', '✅ Done']] as const) {
-            const items = groups[status];
-            board += `### ${label} (${items.length})\n`;
-            if (items.length === 0) {
-                board += '  (empty)\n';
-            } else {
-                for (const t of items) {
-                    board += `  - [${t.id}] ${priorityEmoji[t.priority]} ${t.title}: ${t.description}\n`;
-                }
-            }
-            board += '\n';
-        }
-
-        // Include recent user activity so agent knows what the user did
         const activity = this._state.userActivity || [];
-        if (activity.length > 0) {
-            board += '### 👤 Recent User Activity\n';
-            const recent = activity.slice(-10); // Last 10 actions
-            for (const a of recent) {
-                const ago = Math.round((Date.now() - a.at) / 1000);
-                board += `  - ${ago}s ago: ${a.action}`;
-                if (a.taskTitle) board += ` "${a.taskTitle}"`;
-                if (a.detail) board += ` (${a.detail})`;
-                board += '\n';
-            }
-            board += '\n';
-        }
+        const recentActivity = activity.slice(-10);
 
-        board += '</task-board>';
-        return board;
+        return render(
+            <window name="task-board">
+                <line>Total: {tasks.length} tasks — {groups.todo.length} todo, {groups.doing.length} in progress, {groups.done.length} done</line>
+                <br />
+
+                {(['todo', 'doing', 'done'] as const).map(status => {
+                    const labels = { todo: '📋 Todo', doing: '🔄 In Progress', done: '✅ Done' };
+                    const items = groups[status];
+                    return (
+                        <>
+                            <line>### {labels[status]} ({items.length})</line>
+                            {items.length === 0
+                                ? <line>  (empty)</line>
+                                : items.map(t => (
+                                    <line>  - [{t.id}] {priorityEmoji[t.priority]} {t.title}: {t.description}</line>
+                                ))
+                            }
+                            <br />
+                        </>
+                    );
+                })}
+
+                {recentActivity.length > 0 && (
+                    <>
+                        <line>### 👤 Recent User Activity</line>
+                        {recentActivity.map(a => {
+                            const ago = Math.round((Date.now() - a.at) / 1000);
+                            return (
+                                <line>  - {ago}s ago: {a.action}{a.taskTitle ? ` "${a.taskTitle}"` : ''}{a.detail ? ` (${a.detail})` : ''}</line>
+                            );
+                        })}
+                        <br />
+                    </>
+                )}
+            </window>
+        );
     }
 }
 

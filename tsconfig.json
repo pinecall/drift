@@ -5,7 +5,7 @@
         "moduleResolution": "NodeNext",
         "lib": ["ES2024"],
         "outDir": "dist",
-        "rootDir": "src",
+        "rootDir": ".",
         "declaration": true,
         "strict": true,
         "esModuleInterop": true,
@@ -15,8 +15,9 @@
         "experimentalDecorators": true,
         "emitDecoratorMetadata": false,
         "allowImportingTsExtensions": true,
-        "noEmit": true
+        "noEmit": true,
+        "jsx": "preserve"
     },
-    "include": ["src/**/*.ts"],
+    "include": ["packages/**/*.ts", "packages/**/*.tsx"],
     "exclude": ["node_modules", "dist", "test"]
 }
