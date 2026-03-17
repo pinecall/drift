@@ -52,7 +52,7 @@ const STATUS_CYCLE: Record<string, 'todo' | 'doing' | 'done'> = {
 type NudgePhase = 'idle' | 'thinking' | 'streaming' | 'done'
 
 // ── Floating Thread Chat ──
-function ThreadPanel({ task, sessionId, onClose }: { task: TaskItem; sessionId: string; onClose: () => void }) {
+function ThreadPanel({ task, sessionId, onClose, index = 0 }: { task: TaskItem; sessionId: string; onClose: () => void; index?: number }) {
     const thread = useThread({
         agent: 'task-agent',
         threadId: `card:${task.id}`,
@@ -77,6 +77,8 @@ function ThreadPanel({ task, sessionId, onClose }: { task: TaskItem; sessionId: 
         setInput('')
     }
 
+    const rightOffset = 16 + index * 356
+
     // Minimized pill
     if (isMinimized) {
         return (
@@ -84,15 +86,16 @@ function ThreadPanel({ task, sessionId, onClose }: { task: TaskItem; sessionId: 
                 onClick={() => setIsMinimized(false)}
                 className="flex items-center gap-1.5 rounded-full cursor-pointer"
                 style={{
-                    position: 'fixed', bottom: '16px', right: '16px',
+                    position: 'fixed', bottom: '16px', right: `${rightOffset}px`,
                     background: T.accent, color: '#fff',
                     padding: '8px 14px', fontSize: '11px',
                     boxShadow: `0 4px 24px ${T.accent}40`,
-                    zIndex: 100,
+                    zIndex: 100 + index,
+                    maxWidth: '200px',
                 }}>
                 <MessageCircle size={12} />
-                {task.title}
-                {thread.hasHistory && <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#fff' }} />}
+                <span className="truncate">{task.title}</span>
+                {thread.hasHistory && <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: '#fff' }} />}
             </button>
         )
     }
@@ -102,15 +105,15 @@ function ThreadPanel({ task, sessionId, onClose }: { task: TaskItem; sessionId: 
 
     return (
         <div style={{
-            position: 'fixed', bottom: '16px', right: '16px',
+            position: 'fixed', bottom: '16px', right: `${rightOffset}px`,
             width: panelWidth, height: panelHeight,
             background: T.surface,
             border: `1px solid ${T.border}`,
             borderRadius: '16px',
             display: 'flex', flexDirection: 'column',
             boxShadow: `0 8px 40px rgba(0,0,0,0.5), 0 0 20px ${T.accent}08`,
-            zIndex: 100,
-            transition: 'width 0.2s ease, height 0.2s ease',
+            zIndex: 100 + index,
+            transition: 'width 0.2s ease, height 0.2s ease, right 0.2s ease',
             overflow: 'hidden',
         }}>
             {/* Header */}
@@ -252,66 +255,42 @@ function ThreadPanel({ task, sessionId, onClose }: { task: TaskItem; sessionId: 
 }
 
 // ── Task Card ──
-function TaskCard({ task, onMove, onDelete, onCyclePriority, onNudge, onThread, isSelected, isBlurred, nudgePhase }: {
+function TaskCard({ task, onMove, onDelete, onCyclePriority, onExplain, onThread, isSelected, nudgePhase }: {
     task: TaskItem
     onMove: (id: string, status: 'todo' | 'doing' | 'done') => void
     onDelete: (id: string) => void
     onCyclePriority: (id: string) => void
-    onNudge: (task: TaskItem) => void
+    onExplain: (task: TaskItem) => void
     onThread: (task: TaskItem) => void
     isSelected: boolean
-    isBlurred: boolean
     nudgePhase: NudgePhase
 }) {
     const priority = PRIORITY_CONFIG[task.priority]
     const nextStatus = STATUS_CYCLE[task.status]
     const nextLabel = STATUS_CONFIG[nextStatus].label
 
-    const handleClick = () => {
-        onNudge(task)
-    }
-
     const age = Date.now() - task.createdAt
     const ageLabel = age < 3600000 ? `${Math.round(age / 60000)}m ago`
         : age < 86400000 ? `${Math.round(age / 3600000)}h ago`
         : `${Math.round(age / 86400000)}d ago`
 
-    const isActive = nudgePhase !== 'idle'
-    const borderColor = isActive ? T.accent + '50' : T.border
-    const leftBorder = isSelected ? `3px solid ${
-        nudgePhase === 'thinking' ? T.amber :
-        nudgePhase === 'streaming' ? T.accent :
-        nudgePhase === 'done' ? T.green : T.accent
-    }` : `1px solid ${borderColor}`
-
     return (
-        <div className="group rounded-xl cursor-pointer"
+        <div className="group rounded-xl"
             style={{
                 background: T.surfaceAlt,
-                border: `1px solid ${borderColor}`,
-                borderLeft: leftBorder,
+                border: `1px solid ${isSelected ? T.accent + '40' : T.border}`,
+                borderLeft: isSelected ? `3px solid ${T.accent}` : undefined,
                 padding: isSelected ? '16px 18px 16px 16px' : '14px 18px',
-                boxShadow: isActive ? `0 0 16px ${T.accent}10` : 'none',
-                opacity: isBlurred ? 0.35 : 1,
-                filter: isBlurred ? 'blur(1px)' : 'none',
-                transition: 'all 0.3s ease, opacity 0.3s ease, filter 0.3s ease',
-                transform: isBlurred ? 'scale(0.98)' : 'scale(1)',
+                transition: 'all 0.2s ease',
             }}
-            onClick={handleClick}
             onMouseEnter={e => {
-                if (!isSelected && !isBlurred) {
-                    e.currentTarget.style.borderColor = T.borderLit
-                    e.currentTarget.style.transform = 'translateY(-1px)'
-                }
+                if (!isSelected) e.currentTarget.style.borderColor = T.borderLit
             }}
             onMouseLeave={e => {
-                if (!isSelected && !isBlurred) {
-                    e.currentTarget.style.borderColor = T.border
-                    e.currentTarget.style.transform = 'scale(1)'
-                }
+                if (!isSelected) e.currentTarget.style.borderColor = T.border
             }}>
 
-            {/* Header: priority + actions */}
+            {/* Header: priority + hover actions */}
             <div className="flex items-center justify-between" style={{ marginBottom: '10px' }}>
                 <button onClick={e => { e.stopPropagation(); onCyclePriority(task.id) }}
                     className="flex items-center gap-1.5 text-[10px] rounded-full cursor-pointer transition-opacity hover:opacity-80"
@@ -324,8 +303,7 @@ function TaskCard({ task, onMove, onDelete, onCyclePriority, onNudge, onThread, 
                     <span className="w-1.5 h-1.5 rounded-full" style={{ background: priority.color }} />
                     {priority.label}
                 </button>
-                <div className="flex items-center gap-1" style={{ opacity: 0, transition: 'opacity 0.15s' }}
-                    onMouseEnter={e => e.currentTarget.style.opacity = '1'}
+                <div className="flex items-center gap-0.5" style={{ opacity: 0, transition: 'opacity 0.15s' }}
                     ref={el => {
                         if (el) {
                             const parent = el.closest('.group')
@@ -335,22 +313,36 @@ function TaskCard({ task, onMove, onDelete, onCyclePriority, onNudge, onThread, 
                             }
                         }
                     }}>
+                    {/* ✨ Explain — nudge with haiku */}
+                    <button onClick={e => { e.stopPropagation(); onExplain(task) }}
+                        className="flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] cursor-pointer transition-colors"
+                        style={{ color: T.t4 }}
+                        onMouseEnter={e => { e.currentTarget.style.color = T.purple; e.currentTarget.style.background = T.purple + '10' }}
+                        onMouseLeave={e => { e.currentTarget.style.color = T.t4; e.currentTarget.style.background = 'transparent' }}
+                        title="Quick explanation">
+                        ✨
+                    </button>
+                    {/* 💬 Thread */}
                     <button onClick={e => { e.stopPropagation(); onThread(task) }}
                         className="p-1 rounded-md cursor-pointer transition-colors"
                         style={{ color: T.t4 }}
                         onMouseEnter={e => e.currentTarget.style.color = T.accent}
                         onMouseLeave={e => e.currentTarget.style.color = T.t4}
-                        title="Open thread">
+                        title="Open thread chat">
                         <MessageCircle size={11} />
                     </button>
+                    {/* Separator */}
+                    <span className="w-px h-3" style={{ background: T.border, margin: '0 2px' }} />
+                    {/* → Move */}
                     <button onClick={e => { e.stopPropagation(); onMove(task.id, nextStatus) }}
-                        className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] cursor-pointer transition-colors"
+                        className="flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] cursor-pointer transition-colors"
                         style={{ color: T.t3, background: T.surface }}
                         onMouseEnter={e => { e.currentTarget.style.color = T.accent; e.currentTarget.style.background = T.accent + '10' }}
                         onMouseLeave={e => { e.currentTarget.style.color = T.t3; e.currentTarget.style.background = T.surface }}
                         title={`Move to ${nextLabel}`}>
                         <ArrowRight size={10} /> {nextLabel}
                     </button>
+                    {/* 🗑 Delete */}
                     <button onClick={e => { e.stopPropagation(); onDelete(task.id) }}
                         className="p-1 rounded-md cursor-pointer transition-colors"
                         style={{ color: T.t4 }}
@@ -385,44 +377,70 @@ function TaskCard({ task, onMove, onDelete, onCyclePriority, onNudge, onThread, 
                 <div className="text-[11px] leading-relaxed" style={{
                     color: T.t3,
                     marginTop: '6px',
-                    ...(isSelected ? {} : { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }),
+                    ...(isSelected
+                        ? { whiteSpace: 'pre-wrap' as const, wordBreak: 'break-word' as const }
+                        : {
+                            display: '-webkit-box',
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical' as const,
+                            overflow: 'hidden',
+                        }),
                 }}>{task.description}</div>
             )}
 
             {/* Expanded details */}
             {isSelected && (
-                <div className="flex flex-col gap-2" style={{ marginTop: '12px', paddingTop: '10px', borderTop: `1px solid ${T.border}` }}>
-                    <div className="flex items-center gap-4 text-[10px]" style={{ color: T.t4 }}>
-                        <span>Created {ageLabel}</span>
-                        <span>ID: <span className="font-mono">{task.id}</span></span>
+                <div className="flex flex-col gap-3" style={{ marginTop: '14px', paddingTop: '12px', borderTop: `1px solid ${T.border}` }}>
+                    {/* Status + Priority tags */}
+                    <div className="flex items-center gap-2">
+                        <span className="text-[10px] rounded-full" style={{
+                            background: STATUS_CONFIG[task.status].bg,
+                            color: STATUS_CONFIG[task.status].color,
+                            border: `1px solid ${STATUS_CONFIG[task.status].border}`,
+                            padding: '2px 10px',
+                        }}>
+                            {STATUS_CONFIG[task.status].label}
+                        </span>
+                        <span className="text-[10px] rounded-full" style={{
+                            background: priority.color + '12',
+                            color: priority.color,
+                            border: `1px solid ${priority.color}18`,
+                            padding: '2px 10px',
+                        }}>
+                            {priority.label} Priority
+                        </span>
                     </div>
-                    <div className="flex items-center gap-2 text-[10px]" style={{ color: T.t4 }}>
-                        <span>Status: <span style={{ color: STATUS_CONFIG[task.status].color }}>{STATUS_CONFIG[task.status].label}</span></span>
-                        <span style={{ color: T.t4 }}>·</span>
-                        <span>Priority: <span style={{ color: priority.color }}>{priority.label}</span></span>
+                    {/* Metadata */}
+                    <div className="flex items-center gap-4 text-[10px]" style={{ color: T.t4 }}>
+                        <span>📅 Created {ageLabel}</span>
+                        <span>🔗 <span className="font-mono">{task.id}</span></span>
                     </div>
                 </div>
             )}
 
-            {/* ID badge (collapsed only) */}
+            {/* Collapsed footer */}
             {!isSelected && (
-                <div className="font-mono" style={{ marginTop: '8px', fontSize: '9px', color: T.t4 }}>{task.id}</div>
+                <div className="flex items-center justify-between" style={{ marginTop: '8px' }}>
+                    <div className="font-mono" style={{ fontSize: '9px', color: T.t4 }}>{task.id}</div>
+                    <div className="text-[9px]" style={{ color: T.t4 }}>{ageLabel}</div>
+                </div>
             )}
         </div>
     )
 }
 
 // ── Column ──
-function Column({ status, tasks, onMove, onDelete, onCyclePriority, onNudge, onThread, selectedId, nudgePhase }: {
+function Column({ status, tasks, onMove, onDelete, onCyclePriority, onExplain, onThread, selectedId, nudgePhase, onSelect }: {
     status: 'todo' | 'doing' | 'done'
     tasks: TaskItem[]
     onMove: (id: string, status: 'todo' | 'doing' | 'done') => void
     onDelete: (id: string) => void
     onCyclePriority: (id: string) => void
-    onNudge: (task: TaskItem) => void
+    onExplain: (task: TaskItem) => void
     onThread: (task: TaskItem) => void
     selectedId: string | null
     nudgePhase: NudgePhase
+    onSelect: (id: string) => void
 }) {
     const config = STATUS_CONFIG[status]
 
@@ -446,12 +464,13 @@ function Column({ status, tasks, onMove, onDelete, onCyclePriority, onNudge, onT
                     </div>
                 )}
                 {tasks.map(task => (
-                    <TaskCard key={task.id} task={task}
-                        onMove={onMove} onDelete={onDelete} onCyclePriority={onCyclePriority}
-                        onNudge={onNudge} onThread={onThread}
-                        isSelected={selectedId === task.id}
-                        isBlurred={selectedId !== null && selectedId !== task.id}
-                        nudgePhase={selectedId === task.id ? nudgePhase : 'idle'} />
+                    <div key={task.id} onClick={() => onSelect(task.id)} className="cursor-pointer">
+                        <TaskCard task={task}
+                            onMove={onMove} onDelete={onDelete} onCyclePriority={onCyclePriority}
+                            onExplain={onExplain} onThread={onThread}
+                            isSelected={selectedId === task.id}
+                            nudgePhase={selectedId === task.id ? nudgePhase : 'idle'} />
+                    </div>
                 ))}
             </div>
         </div>
@@ -467,23 +486,24 @@ export function Board({ sessionId }: { sessionId: string }) {
     const tasks = items as TaskItem[]
     const [selectedId, setSelectedId] = useState<string | null>(null)
     const [nudgePhase, setNudgePhase] = useState<NudgePhase>('idle')
-    const [threadTask, setThreadTask] = useState<TaskItem | null>(null)
+    const [nudgeTargetId, setNudgeTargetId] = useState<string | null>(null)
+    const [threadTasks, setThreadTasks] = useState<TaskItem[]>([])
     const prevStreamingRef = useRef(false)
 
     // Track nudge phases based on isStreaming
     useEffect(() => {
-        if (isStreaming && !prevStreamingRef.current && selectedId) {
+        if (isStreaming && !prevStreamingRef.current && nudgeTargetId) {
             setNudgePhase('streaming')
         }
-        if (!isStreaming && prevStreamingRef.current && selectedId) {
+        if (!isStreaming && prevStreamingRef.current && nudgeTargetId) {
             setNudgePhase('done')
             setTimeout(() => {
                 setNudgePhase('idle')
-                setSelectedId(null)
+                setNudgeTargetId(null)
             }, 1500)
         }
         prevStreamingRef.current = isStreaming
-    }, [isStreaming, selectedId])
+    }, [isStreaming, nudgeTargetId])
 
     // Group tasks by status
     const grouped = useMemo(() => {
@@ -498,13 +518,17 @@ export function Board({ sessionId }: { sessionId: string }) {
         return g
     }, [tasks])
 
-    // Record user activity
     const logActivity = useCallback((action: string, taskId?: string, taskTitle?: string, detail?: string) => {
         const entry: Activity = { source: 'user', action, taskId, taskTitle, detail, at: Date.now() }
         const existing = (state?.activity || []) as Activity[]
         const updated = [...existing, entry].slice(-50)
         setState({ activity: updated } as Partial<BoardState>)
     }, [state, setState])
+
+    // Click card → just toggle select/expand (no nudge, no blur)
+    const handleSelect = useCallback((id: string) => {
+        setSelectedId(prev => prev === id ? null : id)
+    }, [])
 
     const handleMove = useCallback((id: string, newStatus: 'todo' | 'doing' | 'done') => {
         const task = tasks.find(t => t.id === id)
@@ -513,25 +537,16 @@ export function Board({ sessionId }: { sessionId: string }) {
         const newLabel = STATUS_CONFIG[newStatus].label
         updateItem(id, { status: newStatus } as Partial<TaskItem>)
         logActivity(`Moved task from ${oldLabel} to ${newLabel}`, id, task.title, `${oldLabel} → ${newLabel}`)
-        setSelectedId(id)
-        setNudgePhase('thinking')
-        nudge(
-            `User moved task "${task.title}" from ${oldLabel} to ${newLabel}. Briefly acknowledge the move.`,
-            { system: 'One sentence max. No tool calls.' }
-        )
-    }, [tasks, updateItem, logActivity, nudge])
+    }, [tasks, updateItem, logActivity])
 
     const handleDelete = useCallback((id: string) => {
         const task = tasks.find(t => t.id === id)
         if (!task) return
         removeItem(id)
         logActivity('Deleted task', id, task.title)
-        if (selectedId === id) {
-            setSelectedId(null)
-            setNudgePhase('idle')
-        }
-        if (threadTask?.id === id) setThreadTask(null)
-    }, [tasks, removeItem, logActivity, selectedId, threadTask])
+        if (selectedId === id) setSelectedId(null)
+        setThreadTasks(prev => prev.filter(t => t.id !== id))
+    }, [tasks, removeItem, logActivity, selectedId])
 
     const handleCyclePriority = useCallback((id: string) => {
         const task = tasks.find(t => t.id === id)
@@ -542,23 +557,26 @@ export function Board({ sessionId }: { sessionId: string }) {
         logActivity(`Changed priority to ${newPriority}`, id, task.title, `${task.priority} → ${newPriority}`)
     }, [tasks, updateItem, logActivity])
 
-    const handleNudge = useCallback((task: TaskItem) => {
-        if (selectedId === task.id) {
-            setSelectedId(null)
-            setNudgePhase('idle')
-            return
-        }
+    // ✨ Explain — dedicated nudge (fast model)
+    const handleExplain = useCallback((task: TaskItem) => {
+        setNudgeTargetId(task.id)
         setSelectedId(task.id)
         setNudgePhase('thinking')
         const statusLabel = STATUS_CONFIG[task.status].label
         nudge(
-            `User clicked on task "${task.title}" (${statusLabel}, ${task.priority} priority). Briefly explain what this task involves and suggest next steps.`,
-            { system: 'Be very brief, 1-2 sentences max. No tool calls.' }
+            `User wants a quick explanation of task "${task.title}" (${statusLabel}, ${task.priority} priority, description: "${task.description}"). Briefly explain what this task involves and suggest next steps.`,
+            { system: 'Be very brief, 1-2 sentences max. No tool calls.', model: 'haiku' }
         )
-    }, [nudge, selectedId])
+    }, [nudge])
 
     const handleThread = useCallback((task: TaskItem) => {
-        setThreadTask(task)
+        setThreadTasks(prev => {
+            // If already open, don't add again
+            if (prev.some(t => t.id === task.id)) return prev
+            // Max 4 simultaneous threads
+            const next = [...prev, task]
+            return next.slice(-4)
+        })
     }, [])
 
     return (
@@ -581,15 +599,15 @@ export function Board({ sessionId }: { sessionId: string }) {
 
             {/* Board columns */}
             <div className="flex-1 min-h-0 flex gap-6" style={{ padding: '24px' }}>
-                <Column status="todo" tasks={grouped.todo} onMove={handleMove} onDelete={handleDelete} onCyclePriority={handleCyclePriority} onNudge={handleNudge} onThread={handleThread} selectedId={selectedId} nudgePhase={nudgePhase} />
-                <Column status="doing" tasks={grouped.doing} onMove={handleMove} onDelete={handleDelete} onCyclePriority={handleCyclePriority} onNudge={handleNudge} onThread={handleThread} selectedId={selectedId} nudgePhase={nudgePhase} />
-                <Column status="done" tasks={grouped.done} onMove={handleMove} onDelete={handleDelete} onCyclePriority={handleCyclePriority} onNudge={handleNudge} onThread={handleThread} selectedId={selectedId} nudgePhase={nudgePhase} />
+                <Column status="todo" tasks={grouped.todo} onMove={handleMove} onDelete={handleDelete} onCyclePriority={handleCyclePriority} onExplain={handleExplain} onThread={handleThread} selectedId={selectedId} nudgePhase={nudgePhase} onSelect={handleSelect} />
+                <Column status="doing" tasks={grouped.doing} onMove={handleMove} onDelete={handleDelete} onCyclePriority={handleCyclePriority} onExplain={handleExplain} onThread={handleThread} selectedId={selectedId} nudgePhase={nudgePhase} onSelect={handleSelect} />
+                <Column status="done" tasks={grouped.done} onMove={handleMove} onDelete={handleDelete} onCyclePriority={handleCyclePriority} onExplain={handleExplain} onThread={handleThread} selectedId={selectedId} nudgePhase={nudgePhase} onSelect={handleSelect} />
             </div>
 
             {/* Footer */}
             <div className="shrink-0 flex items-center justify-between" style={{ borderTop: `1px solid ${T.border}`, padding: '8px 24px', background: T.surface }}>
                 <span className="text-[10px]" style={{ color: T.t4 }}>
-                    Click card to inspect · <MessageCircle size={9} style={{ display: 'inline', verticalAlign: 'middle' }} /> to chat · Agent sees all changes
+                    Click to expand · ✨ explain · <MessageCircle size={9} style={{ display: 'inline', verticalAlign: 'middle' }} /> thread · Agent sees all changes
                 </span>
                 <span className="text-[10px]" style={{ color: T.t4 }}>
                     {(state?.activity?.length || 0)} actions logged
@@ -597,7 +615,10 @@ export function Board({ sessionId }: { sessionId: string }) {
             </div>
 
             {/* Floating Thread Chat */}
-            {threadTask && <ThreadPanel task={threadTask} sessionId={sessionId} onClose={() => setThreadTask(null)} />}
+            {threadTasks.map((t, i) => (
+                <ThreadPanel key={t.id} task={t} sessionId={sessionId} index={i}
+                    onClose={() => setThreadTasks(prev => prev.filter(x => x.id !== t.id))} />
+            ))}
         </div>
     )
 }

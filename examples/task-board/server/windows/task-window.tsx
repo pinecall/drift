@@ -59,11 +59,62 @@ export class TaskBoardWindow extends Window<TaskItem, BoardState> {
     private _seedTasks() {
         const now = Date.now();
         const tasks: TaskItem[] = [
-            { id: 'task-1', title: 'Design API schema', description: 'Define REST endpoints for the user service', status: 'todo', priority: 'high', createdAt: now - 3600000 },
-            { id: 'task-2', title: 'Set up CI/CD pipeline', description: 'Configure GitHub Actions for automated testing and deployment', status: 'todo', priority: 'medium', createdAt: now - 7200000 },
-            { id: 'task-3', title: 'Write unit tests', description: 'Add test coverage for auth module', status: 'doing', priority: 'high', createdAt: now - 1800000 },
-            { id: 'task-4', title: 'Update README', description: 'Document the new API endpoints and setup instructions', status: 'doing', priority: 'low', createdAt: now - 900000 },
-            { id: 'task-5', title: 'Fix login bug', description: 'Users unable to login with SSO on mobile', status: 'done', priority: 'high', createdAt: now - 86400000 },
+            {
+                id: 'task-1',
+                title: 'Design API schema',
+                description: 'Define REST endpoints for the user service including authentication, profile management, and permission roles. Must support pagination, filtering by role/status, and bulk operations. Consider GraphQL as an alternative for the dashboard queries. Acceptance criteria: OpenAPI spec reviewed by backend team, at least 12 endpoints documented.',
+                status: 'todo',
+                priority: 'high',
+                createdAt: now - 3600000,
+            },
+            {
+                id: 'task-2',
+                title: 'Set up CI/CD pipeline',
+                description: 'Configure GitHub Actions for automated testing (unit + integration), linting, and deployment to staging on PR merge. Production deploy should require manual approval. Include Slack notifications for failed builds and a badge in the README. Blocked by: DevOps team needs to provision the staging environment first.',
+                status: 'todo',
+                priority: 'medium',
+                createdAt: now - 7200000,
+            },
+            {
+                id: 'task-3',
+                title: 'Write unit tests for auth module',
+                description: 'Add comprehensive test coverage for the authentication module: login flow, token refresh, password reset, SSO callback, and rate limiting. Target: 90%+ coverage. Use vitest with mocked Anthropic provider. Edge cases to cover: expired tokens, concurrent refresh requests, malformed JWTs, and revoked sessions.',
+                status: 'doing',
+                priority: 'high',
+                createdAt: now - 1800000,
+            },
+            {
+                id: 'task-4',
+                title: 'Update documentation',
+                description: 'Document the new API endpoints, setup instructions, and migration guide from v2. Include code examples for each endpoint, error response formats, and rate limit headers. Add a "Getting Started" section for new developers with prerequisites, env setup, and a working curl example. Review with the DX team before merging.',
+                status: 'doing',
+                priority: 'low',
+                createdAt: now - 900000,
+            },
+            {
+                id: 'task-5',
+                title: 'Fix SSO login on mobile',
+                description: 'Users on iOS Safari and Chrome Android are unable to complete the SSO login flow — the OAuth callback redirect fails silently. Root cause: the callback URL uses a non-standard port that gets stripped by mobile browsers. Fix: use a proxy endpoint on port 443 and update the OAuth provider allowlist. Verified fix works on BrowserStack for top 5 mobile browsers.',
+                status: 'done',
+                priority: 'high',
+                createdAt: now - 86400000,
+            },
+            {
+                id: 'task-6',
+                title: 'Implement role-based access control',
+                description: 'Add RBAC middleware that checks user permissions before allowing access to protected routes. Roles: admin, editor, viewer. Permissions should be configurable per-resource (read, write, delete). Store role assignments in the database with an admin UI for managing them. Must integrate with the existing auth module and support hierarchical role inheritance.',
+                status: 'todo',
+                priority: 'high',
+                createdAt: now - 5400000,
+            },
+            {
+                id: 'task-7',
+                title: 'Performance audit & optimization',
+                description: 'Run Lighthouse audit on all main pages, identify bottlenecks in the API response times (target: p95 < 200ms), and optimize database queries that are causing N+1 problems. Consider adding Redis caching for frequently accessed user profiles. Create a performance dashboard with key metrics. Document findings and share with the team in Friday standup.',
+                status: 'doing',
+                priority: 'medium',
+                createdAt: now - 2700000,
+            },
         ];
         for (const t of tasks) this.add(t.id, t);
     }

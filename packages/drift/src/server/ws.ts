@@ -177,7 +177,8 @@ export function createWSHandler(
                 }
 
                 // Wire agent events → broadcast
-                const cleanup = _wireAgentEvents(agent, agentName, sessionId, broadcast);
+                const runId = _claimAgentRun(agentName);
+                const cleanup = _wireAgentEvents(agent, agentName, sessionId, broadcast, runId);
 
                 // Notify clients: new assistant turn started
                 broadcast({ event: 'chat:started', agent: agentName, sessionId });
@@ -268,7 +269,8 @@ export function createWSHandler(
                 }
 
                 // Wire events & run
-                const cleanup = _wireAgentEvents(agent, agentName, sessionId, broadcast);
+                const runId = _claimAgentRun(agentName);
+                const cleanup = _wireAgentEvents(agent, agentName, sessionId, broadcast, runId);
                 broadcast({ event: 'chat:started', agent: agentName, sessionId, nudge: true });
 
                 try {
@@ -336,8 +338,9 @@ export function createWSHandler(
                 const originalModel = agent.model;
                 if (msg.model) agent.model = msg.model;
 
-                // Wire events & run
-                const cleanup = _wireAgentEvents(agent, agentName, threadSessionId, broadcast);
+                // Wire events & run (claim agent run to prevent event bleed)
+                const runId = _claimAgentRun(agentName);
+                const cleanup = _wireAgentEvents(agent, agentName, threadSessionId, broadcast, runId);
                 broadcast({ event: 'chat:started', agent: agentName, sessionId: threadSessionId });
 
                 try {
@@ -736,10 +739,24 @@ export function createWSHandler(
         };
     }
 
-    function _wireAgentEvents(agent: Agent, agentName: string, sessionId: string, broadcast: (data: any) => void): () => void {
+    // Track active run per agent to prevent event bleed between concurrent sessions
+    const _agentRunIds = new Map<string, number>();
+    let _runIdCounter = 0;
+
+    /** Claim a run slot for this agent. Returns a runId. Only the holder of the current runId should emit events. */
+    function _claimAgentRun(agentName: string): number {
+        const runId = ++_runIdCounter;
+        _agentRunIds.set(agentName, runId);
+        return runId;
+    }
+
+    function _wireAgentEvents(agent: Agent, agentName: string, sessionId: string, broadcast: (data: any) => void, runId?: number): () => void {
         const handlers: [string, (...args: any[]) => void][] = [];
         let accText = '';
         let accThinking = '';
+
+        // Gate: only forward events if this run is still the active run for this agent
+        const isActive = () => runId === undefined || _agentRunIds.get(agentName) === runId;
 
         function on(event: string, handler: (...args: any[]) => void) {
             agent.on(event, handler);
@@ -747,15 +764,23 @@ export function createWSHandler(
         }
 
         on('text:delta', (data) => {
+            if (!isActive()) return;
             accText += data.chunk;
             broadcast({ event: 'chat:text', agent: agentName, sessionId, delta: data.chunk, full: accText });
         });
         on('thinking:delta', (data) => {
+            if (!isActive()) return;
             accThinking += data.text;
             broadcast({ event: 'chat:thinking', agent: agentName, sessionId, thinking: accThinking });
         });
-        on('tool:execute', (data) => broadcast({ event: 'chat:tool', agent: agentName, sessionId, name: data.name, params: data.params }));
-        on('tool:result', (data) => broadcast({ event: 'chat:tool:result', agent: agentName, sessionId, name: data.name, result: data.result, ms: data.ms }));
+        on('tool:execute', (data) => {
+            if (!isActive()) return;
+            broadcast({ event: 'chat:tool', agent: agentName, sessionId, name: data.name, params: data.params });
+        });
+        on('tool:result', (data) => {
+            if (!isActive()) return;
+            broadcast({ event: 'chat:tool:result', agent: agentName, sessionId, name: data.name, result: data.result, ms: data.ms });
+        });
 
         return () => {
             for (const [event, handler] of handlers) {
