@@ -698,6 +698,15 @@ function _restoreSessions(
                 session.conversation.loadJSON(messages as any[]);
             }
 
+            // Restore window state
+            if (agent.window) {
+                const winClass = agent.window.constructor.name;
+                const winData = storage.loadWindow(data.id, winClass);
+                if (winData) {
+                    agent.window.loadJSON(winData);
+                }
+            }
+
             sessions.set(data.id, session);
         }
 
