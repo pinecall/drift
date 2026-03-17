@@ -15,7 +15,8 @@
  *   models:list — Available model catalog
  */
 
-import { WebSocketServer, type WebSocket } from 'ws';
+import type { WebSocket } from 'ws';
+import { WebSocketServer } from 'ws';
 import type { Server as HttpServer } from 'node:http';
 import type { Agent } from '../core/agent.ts';
 import { Session } from '../core/session.ts';
@@ -24,6 +25,7 @@ import type { CodebaseWindow } from '../windows/codebase-window.tsx';
 import type { LoadedAgent } from './config.ts';
 import { listModels, getModel } from '../provider/models.ts';
 import type { Effort } from '../types.ts';
+import type { Storage } from '../core/storage.ts';
 
 // ── Types ───────────────────────────────────────────
 
@@ -39,11 +41,17 @@ export function createWSHandler(
     httpServer: HttpServer,
     agents: LoadedAgent[],
     windows: Map<string, Window<any, any>>,
+    storage?: Storage,
 ) {
     const wss = new WebSocketServer({ server: httpServer });
     const clients = new Set<WebSocket>();
     const agentMap = new Map<string, Agent>(agents.map(a => [a.name, a.agent]));
     const sessions = new Map<string, Session>();
+
+    // Restore sessions from storage on startup
+    if (storage) {
+        _restoreSessions(storage, sessions, agentMap, agents);
+    }
 
     // ── Broadcast to all clients ────────────────────
 
@@ -165,6 +173,16 @@ export function createWSHandler(
                     broadcast({ event: 'chat:error', agent: agentName, sessionId, error: err.message });
                 } finally {
                     cleanup();
+                    // Persist after run
+                    if (storage && session) {
+                        storage.saveSession(session.toJSON());
+                        storage.saveMessages(sessionId, session.conversation.toJSON());
+                        // Save window state if agent has one
+                        if (agent.window) {
+                            const winClass = agent.window.constructor.name;
+                            storage.saveWindow(sessionId, winClass, agent.window.toJSON());
+                        }
+                    }
                     // Broadcast session update after run completes
                     broadcast({ event: 'sessions:updated', session: _serializeSession(session!) });
                 }
@@ -353,6 +371,7 @@ export function createWSHandler(
                 }
                 if (session.isRunning) session.abort();
                 sessions.delete(sessionId);
+                if (storage) storage.deleteSession(sessionId);
                 broadcast({ event: 'sessions:deleted', sessionId });
                 break;
             }
@@ -561,4 +580,39 @@ export function createWSHandler(
             wss.close();
         },
     };
+}
+
+// ── Session Restoration ─────────────────────────────
+
+function _restoreSessions(
+    storage: Storage,
+    sessions: Map<string, Session>,
+    agentMap: Map<string, Agent>,
+    agents: LoadedAgent[],
+): void {
+    try {
+        const savedSessions = storage.listSessions();
+        const defaultAgent = agents[0]?.agent;
+        if (!defaultAgent) return;
+
+        for (const data of savedSessions as any[]) {
+            // Find the agent by name, fall back to default
+            const agent = agentMap.get(data.agentName) || defaultAgent;
+            const session = new Session(agent, { id: data.id });
+
+            // Restore conversation messages
+            const messages = storage.loadMessages(data.id);
+            if (messages && (messages as any[]).length > 0) {
+                session.conversation.loadJSON(messages as any[]);
+            }
+
+            sessions.set(data.id, session);
+        }
+
+        if (sessions.size > 0) {
+            console.log(`  📦 Restored ${sessions.size} session(s) from storage`);
+        }
+    } catch (err: any) {
+        console.warn(`  ⚠ Failed to restore sessions: ${err.message}`);
+    }
 }

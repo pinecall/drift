@@ -213,6 +213,18 @@ export class Conversation {
         this.history = [];
     }
 
+    // ── Serialization ──────────────────────────────────
+
+    /** Serialize messages for persistence. */
+    toJSON(): Message[] {
+        return [...this.history];
+    }
+
+    /** Restore messages from persistence. */
+    loadJSON(messages: Message[]): void {
+        this.history = [...messages];
+    }
+
     /**
      * Get/set max messages.
      */

@@ -32,6 +32,8 @@
     "license": "MIT",
     "dependencies": {
         "@anthropic-ai/sdk": "^0.32.1",
+        "@types/better-sqlite3": "^7.6.13",
+        "better-sqlite3": "^12.8.0",
         "ws": "^8.19.0"
     },
     "devDependencies": {

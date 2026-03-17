@@ -129,4 +129,16 @@ export class Session extends EventEmitter {
 
     /** Is the agent currently running? */
     get isRunning(): boolean { return this._isRunning; }
+
+    // ── Serialization ──────────────────────────────────
+
+    /** Serialize session metadata for persistence. */
+    toJSON(): { id: string; agentName: string; createdAt: number; updatedAt: number } {
+        return {
+            id: this.id,
+            agentName: this._agent.constructor.name,
+            createdAt: this.createdAt,
+            updatedAt: Date.now(),
+        };
+    }
 }

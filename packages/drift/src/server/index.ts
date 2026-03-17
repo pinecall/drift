@@ -19,6 +19,8 @@ import { detectViteConfig, spawnViteDev } from './vite-dev.ts';
 import type { Agent } from '../core/agent.ts';
 import type { Window } from '../core/window.ts';
 import type { ChildProcess } from 'node:child_process';
+import type { Storage } from '../core/storage.ts';
+import { SQLiteStorage } from '../core/sqlite-storage.ts';
 
 // ── MIME types for static serving ───────────────────
 const MIME: Record<string, string> = {
@@ -41,6 +43,7 @@ const MIME: Record<string, string> = {
 
 export class DriftServer {
     readonly config: DriftConfig;
+    readonly storage: Storage | null;
     private _httpServer: http.Server | null = null;
     private _ws: ReturnType<typeof createWSHandler> | null = null;
     private _agents: LoadedAgent[] = [];
@@ -48,11 +51,20 @@ export class DriftServer {
     private _uiDir: string | null = null;
     private _viteProcess: ChildProcess | null = null;
 
-    constructor(configOrDir?: Partial<DriftConfig> | string) {
+    constructor(configOrDir?: Partial<DriftConfig & { storage?: Storage | boolean }> | string) {
         if (typeof configOrDir === 'string') {
             this.config = loadConfig(configOrDir);
+            this.storage = new SQLiteStorage(path.resolve(configOrDir, '.drift/drift.db'));
         } else {
             this.config = { ...loadConfig(), ...configOrDir };
+            // storage: false → disabled, Storage instance → use it, undefined/true → SQLite default
+            if (configOrDir && configOrDir.storage === false) {
+                this.storage = null;
+            } else if (configOrDir && typeof configOrDir.storage === 'object') {
+                this.storage = configOrDir.storage as Storage;
+            } else {
+                this.storage = new SQLiteStorage(path.resolve(this.config.cwd, '.drift/drift.db'));
+            }
         }
     }
 
@@ -87,7 +99,7 @@ export class DriftServer {
         });
 
         // 5. WebSocket handler
-        this._ws = createWSHandler(this._httpServer, this._agents, this._windows);
+        this._ws = createWSHandler(this._httpServer, this._agents, this._windows, this.storage || undefined);
 
         // 6. Pre-load files from config
         if (this.config.preload.length > 0) {
@@ -240,6 +252,7 @@ export class DriftServer {
             this._viteProcess = null;
         }
         this._ws?.close();
+        if (this.storage) this.storage.close();
         return new Promise<void>((resolve) => {
             if (this._httpServer) {
                 this._httpServer.close(() => resolve());
