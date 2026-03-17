@@ -1,6 +1,6 @@
-import { useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { useWindow, useChat } from 'drift/react'
-import { ArrowRight, Trash2, Circle, Flame, Zap, Leaf, LayoutGrid, Wifi, WifiOff, Eye } from 'lucide-react'
+import { ArrowRight, Trash2, Circle, Flame, Zap, Leaf, LayoutGrid, Wifi, WifiOff } from 'lucide-react'
 import { useDriftContext } from 'drift/react'
 import { T } from '../lib/theme'
 
@@ -56,31 +56,52 @@ function TaskCard({ task, onMove, onDelete, onCyclePriority, onNudge }: {
     onCyclePriority: (id: string) => void
     onNudge: (task: TaskItem) => void
 }) {
+    const [expanded, setExpanded] = useState(false)
+    const [nudging, setNudging] = useState(false)
     const priority = PRIORITY_CONFIG[task.priority]
     const PriorityIcon = priority.icon
     const nextStatus = STATUS_CYCLE[task.status]
     const nextLabel = STATUS_CONFIG[nextStatus].label
 
+    const handleClick = () => {
+        const willExpand = !expanded
+        setExpanded(willExpand)
+        if (willExpand) {
+            setNudging(true)
+            onNudge(task)
+            // Glow fades after 2s
+            setTimeout(() => setNudging(false), 2000)
+        }
+    }
+
+    const age = Date.now() - task.createdAt
+    const ageLabel = age < 3600000 ? `${Math.round(age / 60000)}m ago`
+        : age < 86400000 ? `${Math.round(age / 3600000)}h ago`
+        : `${Math.round(age / 86400000)}d ago`
+
     return (
-        <div className="group rounded-xl transition-all duration-200"
+        <div className="group rounded-xl transition-all duration-300 cursor-pointer"
             style={{
                 background: T.surfaceAlt,
-                border: `1px solid ${T.border}`,
-                padding: '14px 16px',
+                border: `1px solid ${nudging ? T.accent + '60' : T.border}`,
+                borderLeft: expanded ? `3px solid ${T.accent}` : `1px solid ${nudging ? T.accent + '60' : T.border}`,
+                padding: expanded ? '16px 16px 16px 14px' : '14px 16px',
+                boxShadow: nudging ? `0 0 12px ${T.accent}15` : 'none',
             }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = T.borderLit; e.currentTarget.style.transform = 'translateY(-1px)' }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.transform = 'translateY(0)' }}>
+            onClick={handleClick}
+            onMouseEnter={e => { if (!expanded) { e.currentTarget.style.borderColor = T.borderLit; e.currentTarget.style.transform = 'translateY(-1px)' } }}
+            onMouseLeave={e => { if (!expanded) { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.transform = 'translateY(0)' } }}>
 
             {/* Header: priority + actions */}
             <div className="flex items-center justify-between mb-2">
-                <button onClick={() => onCyclePriority(task.id)}
+                <button onClick={e => { e.stopPropagation(); onCyclePriority(task.id) }}
                     className="flex items-center gap-1.5 text-[10px] font-medium px-2 py-0.5 rounded-full cursor-pointer transition-opacity hover:opacity-80"
                     style={{ background: priority.color + '15', color: priority.color, border: `1px solid ${priority.color}20` }}>
                     <PriorityIcon size={10} />
                     {priority.label}
                 </button>
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={() => onMove(task.id, nextStatus)}
+                    <button onClick={e => { e.stopPropagation(); onMove(task.id, nextStatus) }}
                         className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] cursor-pointer transition-colors"
                         style={{ color: T.t3, background: T.surface }}
                         onMouseEnter={e => { e.currentTarget.style.color = T.accent; e.currentTarget.style.background = T.accent + '10' }}
@@ -88,7 +109,7 @@ function TaskCard({ task, onMove, onDelete, onCyclePriority, onNudge }: {
                         title={`Move to ${nextLabel}`}>
                         <ArrowRight size={10} /> {nextLabel}
                     </button>
-                    <button onClick={() => onDelete(task.id)}
+                    <button onClick={e => { e.stopPropagation(); onDelete(task.id) }}
                         className="p-1 rounded-md cursor-pointer transition-colors"
                         style={{ color: T.t4 }}
                         onMouseEnter={e => e.currentTarget.style.color = T.red}
@@ -99,21 +120,45 @@ function TaskCard({ task, onMove, onDelete, onCyclePriority, onNudge }: {
                 </div>
             </div>
 
-            {/* Title — click to nudge */}
-            <div className="text-[13px] font-medium mb-1 cursor-pointer flex items-center gap-1.5 group/title"
-                style={{ color: T.t1 }}
-                onClick={() => onNudge(task)}>
-                <span className="hover:underline">{task.title}</span>
-                <Eye size={11} className="opacity-0 group-hover/title:opacity-40 transition-opacity" style={{ color: T.t3 }} />
+            {/* Title */}
+            <div className="flex items-center gap-1.5">
+                <div className="text-[13px] font-medium" style={{ color: T.t1 }}>{task.title}</div>
+                {nudging && (
+                    <div className="flex gap-0.5 items-center">
+                        {[0, 100, 200].map(d => (
+                            <span key={d} className="w-1 h-1 rounded-full animate-bounce" style={{ background: T.accent, animationDelay: `${d}ms` }} />
+                        ))}
+                    </div>
+                )}
             </div>
 
-            {/* Description */}
+            {/* Description (always visible if short, truncated when collapsed) */}
             {task.description && (
-                <div className="text-[11px] leading-relaxed" style={{ color: T.t3 }}>{task.description}</div>
+                <div className="text-[11px] leading-relaxed mt-1" style={{
+                    color: T.t3,
+                    ...(expanded ? {} : { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }),
+                }}>{task.description}</div>
             )}
 
-            {/* ID badge */}
-            <div className="mt-2 text-[9px] font-mono" style={{ color: T.t4 }}>{task.id}</div>
+            {/* Expanded details */}
+            {expanded && (
+                <div className="mt-3 pt-3 flex flex-col gap-2" style={{ borderTop: `1px solid ${T.border}` }}>
+                    <div className="flex items-center gap-4 text-[10px]" style={{ color: T.t4 }}>
+                        <span>Created {ageLabel}</span>
+                        <span>ID: <span className="font-mono">{task.id}</span></span>
+                    </div>
+                    <div className="flex items-center gap-2 text-[10px]" style={{ color: T.t4 }}>
+                        <span>Status: <span style={{ color: STATUS_CONFIG[task.status].color }}>{STATUS_CONFIG[task.status].label}</span></span>
+                        <span>•</span>
+                        <span>Priority: <span style={{ color: priority.color }}>{priority.label}</span></span>
+                    </div>
+                </div>
+            )}
+
+            {/* ID badge (collapsed only) */}
+            {!expanded && (
+                <div className="mt-2 text-[9px] font-mono" style={{ color: T.t4 }}>{task.id}</div>
+            )}
         </div>
     )
 }
