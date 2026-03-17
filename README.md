@@ -85,6 +85,13 @@ console.log(result.cost);   // 0.003241
 - [Web Search](#web-search)
 - [Provider](#provider)
 - [Types Reference](#types-reference)
+- [Authentication](#authentication)
+  - [Quick Protect (SecretAuth)](#quick-protect-standalone-apps)
+  - [Token Validation (TokenAuth)](#token-validation-jwt-api-keys)
+  - [Custom Auth](#custom-auth-nextauth-clerk-etc)
+  - [Authorization (per-agent, RBAC)](#authorization-per-action-rbac)
+- [Embedding (attach)](#embedding-attach)
+- [Persistence](#persistence)
 - [Project Structure](#project-structure)
 - [Examples](#examples)
 - [Development](#development)
@@ -1983,7 +1990,7 @@ const server = new DriftServer({
 
 ### Authorization (per-action RBAC)
 
-Any auth adapter can optionally implement `authorize()` to control per-action access:
+Any auth adapter can optionally implement `authorize()` to control per-action and **per-agent** access:
 
 ```typescript
 const server = new DriftServer({
@@ -1998,6 +2005,57 @@ const server = new DriftServer({
         },
     },
 });
+```
+
+#### Per-Agent Access Control
+
+Restrict which agents a user can talk to using `msg.agent`:
+
+```typescript
+// Define which agents each role can access
+const agentPermissions: Record<string, string[]> = {
+    admin:   ['developer', 'researcher', 'developer-lite', 'playwright'],
+    dev:     ['developer', 'developer-lite'],
+    viewer:  ['researcher'],
+};
+
+const server = new DriftServer({
+    auth: {
+        authenticate(req) {
+            const token = /* extract token */;
+            return { id: 'user-1', role: 'dev' };
+        },
+        authorize(user, action, msg) {
+            // Restrict agent access on chat actions
+            if (action.startsWith('chat:') && msg.agent) {
+                const allowed = agentPermissions[user.role] || [];
+                if (!allowed.includes(msg.agent)) {
+                    throw new Error(`No access to agent "${msg.agent}"`);
+                }
+            }
+            return true;
+        },
+    },
+});
+```
+
+Or per-user:
+
+```typescript
+const userAgents: Record<string, string[]> = {
+    'user-1': ['developer', 'researcher'],
+    'user-2': ['researcher'],
+};
+
+authorize(user, action, msg) {
+    if (action === 'chat:send' && msg.agent) {
+        const allowed = userAgents[user.id] || [];
+        if (!allowed.includes(msg.agent)) {
+            throw new Error('Unauthorized agent');
+        }
+    }
+    return true;
+}
 ```
 
 ### `DriftAuth` Interface
