@@ -64,9 +64,10 @@ console.log(result.cost);   // 0.003241
   - [State (React-like)](#state-react-like)
   - [Events](#events-1)
   - [CodebaseWindow](#codebasewindow)
-  - [UI Sync](#ui-sync)
+  - [UI Sync (useWindow)](#ui-sync-usewindow)
   - [Custom Windows](#custom-windows)
-  - [Serialization](#serialization)
+  - [Serialization & Persistence](#serialization--persistence)
+  - [Disabling (Token Saving)](#disabling-token-saving)
 - [Drift Server](#drift-server)
   - [drift.config.json](#driftconfigjson)
   - [CLI](#cli)
@@ -1267,30 +1268,69 @@ Use the line numbers below for all edit operations.
 | `disabled` | `boolean` | Excluded from `render()` |
 | `openedAt` | `number` | Timestamp when opened |
 
-### UI Sync
+### UI Sync (`useWindow`)
 
-One listener replaces PineCode's 10+ manual `sendJSON()` calls:
+Window changes flow from agent to UI in real-time via WebSocket:
+
+```
+Agent tool modifies window → Window emits 'change'
+                                    ↓
+             DriftServer broadcasts 'window:changed' to all WS clients
+                                    ↓
+              useWindow() receives event → React state updates → UI re-renders
+```
+
+**Server-side** — handled automatically by `DriftServer`. Windows are shared across agents of the same class, and all changes are broadcast to every connected client.
+
+**Client-side** — `useWindow()` from `drift-react` gives you reactive state:
 
 ```typescript
-// Server-side: pipe all window changes to WebSocket
-agent.window.on('change', (event) => {
-    ws.send(JSON.stringify({
-        type: 'window:changed',
-        action: event.action,
-        items: event.items,
-        state: event.state,
-    }));
-});
+import { useWindow } from 'drift-react';
 
-// Client-side: dispatch UI actions to window
-ws.on('message', (raw) => {
-    const { action, path } = JSON.parse(raw);
-    if (action === 'open')    agent.window.open(path);
-    if (action === 'close')   agent.window.close(path);
-    if (action === 'refresh') agent.window.refresh(path);
-    if (action === 'disable') agent.window.disable(path);
-});
+function Board() {
+    const { items, state, updateItem, removeItem, setState } = useWindow<TaskItem, BoardState>();
+
+    return items.map(task => (
+        <div key={task.id} draggable
+            onDragEnd={() => updateItem(task.id, { status: 'done' })}
+        >
+            {task.title}
+            <button onClick={() => removeItem(task.id)}>×</button>
+        </div>
+    ));
+}
 ```
+
+**`useWindow()` API:**
+
+| Property/Method | Type | Description |
+|---|---|---|
+| `items` | `T[]` | All window items (reactive) |
+| `state` | `S` | Window state (reactive) |
+| `open(path)` | `void` | Open a file/item |
+| `close(path)` | `void` | Close a file/item |
+| `refresh(path?)` | `void` | Refresh one or all items |
+| `disable(path)` | `void` | Exclude from agent prompt but keep open |
+| `enable(path)` | `void` | Re-include in agent prompt |
+| `setState(patch)` | `void` | Update window state (shallow merge) |
+| `updateItem(id, patch)` | `void` | Update an item by id |
+| `removeItem(id)` | `void` | Remove an item by id |
+| `size` | `number` | Number of items |
+
+The WS protocol for windows:
+
+| Client Action | Server Event | Description |
+|---|---|---|
+| `window:open` | `window:changed` | Open file → broadcasts items |
+| `window:close` | `window:changed` | Close file → broadcasts items |
+| `window:refresh` | `window:changed` | Re-read file(s) from disk |
+| `window:disable` | `window:changed` | Exclude from render() |
+| `window:enable` | `window:changed` | Re-include in render() |
+| `window:setState` | `window:changed` | Update window state |
+| `window:item:update` | `window:changed` | Patch an item |
+| `window:item:remove` | `window:changed` | Remove an item |
+
+On connect, the server sends a `window:changed` event with `action: 'sync'` containing the full current state.
 
 ### Custom Windows
 
@@ -1414,6 +1454,50 @@ window.loadJSON(data);
 | `state` | `Readonly<S>` | Current state |
 | `size` | `number` | Item count |
 | `turn` | `number` | Current turn |
+
+### Serialization & Persistence
+
+Window state is **automatically persisted** by `DriftServer` when a `Storage` backend is configured (SQLite by default):
+
+```
+Agent tool modifies window → saveWindow(sessionId, className, window.toJSON())
+                                                  ↓
+Server restart → loadWindow(sessionId, className) → window.loadJSON(data)
+                                                  ↓
+                              WS broadcasts 'window:changed' → UI in sync
+```
+
+What gets persisted:
+- All items (`Map<string, T>` → `[id, item][]`)
+- State object (`S`)
+- Turn counter
+
+Manual serialization:
+
+```typescript
+// Save
+const snapshot = window.toJSON();
+// → { items: [[id, item], ...], state: { ... }, turn: 5 }
+
+// Restore
+window.loadJSON(data);  // replaces items, state, and turn
+```
+
+### Disabling (Token Saving)
+
+Files/items can be **disabled** — they stay open but are excluded from `render()`, saving token usage:
+
+```typescript
+// Server-side
+win.disable('src/large-file.ts');  // still in items, but render() skips it
+win.enable('src/large-file.ts');   // back in render()
+
+// Client-side (via useWindow)
+const { disable, enable } = useWindow();
+disable('src/large-file.ts');  // sends WS action, server disables, broadcasts
+```
+
+The agent won't see disabled items in its prompt, but they're preserved for when you need them again. Useful for large files that consume too many tokens.
 
 ---
 
@@ -2234,7 +2318,7 @@ node --import tsx examples/basic/<file>.ts
 ## Development
 
 ```bash
-nvm use 24                                  # Node 24 required
+nvm use 24                               
 npm test                                    # 172 unit tests (~0.5s)
 npm run test:integration                    # + 11 real Haiku API tests (~30s, needs ANTHROPIC_API_KEY)
 npm run test:verbose                        # Show per-assertion details

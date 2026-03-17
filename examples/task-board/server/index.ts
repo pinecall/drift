@@ -4,14 +4,22 @@
  * Demonstrates bidirectional window reactivity:
  *   - Agent tools modify the board → UI updates in real-time
  *   - User interacts with the board → Agent sees the changes
+ *   - Tasks persist to SQLite across server restarts
  * 
  * Run:
- *   cd examples/with-react-tasks && npm install && npm run build
- *   cd ../.. && npx tsx examples/with-react-tasks/server.ts
+ *   cd examples/task-board && npm install && npm run build
+ *   cd ../.. && npx tsx examples/task-board/server/index.ts
  *   → http://localhost:3200
  */
 
 import { DriftServer } from '../../../packages/drift/src/server/index.ts';
 
-const server = new DriftServer(import.meta.dirname!);
+const server = new DriftServer({
+    port: 3200,
+    agentsDir: './agents',
+    windowsDir: './windows',
+    ui: './ui/dist',
+    cwd: import.meta.dirname!,
+    storage: true,  // SQLite persistence — tasks survive server restarts
+});
 await server.start();
