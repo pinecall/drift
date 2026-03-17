@@ -23,7 +23,7 @@ console.log(result.text);   // "I found 3 users named John..."
 console.log(result.cost);   // 0.003241
 ```
 
-> **Requirements**: Node ≥ 24 · `ANTHROPIC_API_KEY` env var
+> **Requirements**: Node ≥ 18 · `ANTHROPIC_API_KEY` env var
 
 ---
 
@@ -96,7 +96,7 @@ console.log(result.cost);   // 0.003241
 ```bash
 git clone <repo>
 cd drift
-nvm use 24 
+nvm use 18 
 npm install
 ```
 
@@ -1939,7 +1939,7 @@ drift/
 ├── examples/
 │   ├── basic/                    # 8 standalone script examples
 │   └── task-board/               # Full React app — task board + session sidebar
-├── .nvmrc                        # Node 24
+├── .nvmrc                        # Node ≥18
 ├── package.json                  # Single npm package with subpath exports
 ├── tsconfig.json
 └── README.md
@@ -1970,7 +1970,7 @@ node --import tsx examples/basic/<file>.ts
 ## Development
 
 ```bash
-nvm use 24                                  # Node 24 required
+nvm use 18                                  # Node ≥18 required
 npm test                                    # 145 unit tests (~0.5s)
 npm run test:integration                    # + 11 real Haiku API tests (~30s, needs ANTHROPIC_API_KEY)
 npm run test:verbose                        # Show per-assertion details
@@ -1981,6 +1981,6 @@ node --import tsx test/run.ts --filter prompt
 node --import tsx test/run.ts --integration --filter streaming
 ```
 
-**Node 24 native**: Uses `node --import tsx` (Node 24 loader API). All imports use `.ts` extensions directly — no build step needed. TypeScript runs natively.
+**Node ≥18 native**: Uses `node --import tsx` (Node ≥18 loader API). All imports use `.ts` extensions directly — no build step needed. TypeScript runs natively.
 
 **Dependencies**: `@anthropic-ai/sdk`, `ws`. Dev: `typescript`, `tsx`, `@types/node`.
