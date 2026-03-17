@@ -1934,7 +1934,7 @@ drift/
 │   └── drift.ts                  # CLI — `drift server`, `drift dev`
 ├── test/
 │   ├── run.ts                    # Zero-dep test runner
-│   ├── unit/                     # 123 unit tests
+│   ├── unit/                     # 145 unit tests
 │   └── integration/              # 11 integration tests
 ├── examples/
 │   ├── basic/                    # 8 standalone script examples
@@ -1971,7 +1971,7 @@ node --import tsx examples/basic/<file>.ts
 
 ```bash
 nvm use 24                                  # Node 24 required
-npm test                                    # 123 unit tests (~0.5s)
+npm test                                    # 145 unit tests (~0.5s)
 npm run test:integration                    # + 11 real Haiku API tests (~30s, needs ANTHROPIC_API_KEY)
 npm run test:verbose                        # Show per-assertion details
 npm run typecheck                           # tsc --noEmit

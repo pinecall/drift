@@ -8,11 +8,11 @@ const wsPort = process.env.DRIFT_WS_PORT
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   build: {
-    outDir: 'ui/dist',
+    outDir: 'dist',
   },
   resolve: {
     alias: {
-      'drift/react': path.resolve(__dirname, 'src/drift/index.ts'),
+      'drift/react': path.resolve(__dirname, 'app/hooks/index.ts'),
       'react': path.resolve(__dirname, 'node_modules/react'),
       'react-dom': path.resolve(__dirname, 'node_modules/react-dom'),
     },

@@ -21,8 +21,8 @@
     "noUncheckedSideEffectImports": true,
     "baseUrl": ".",
     "paths": {
-      "drift/react": ["src/drift/index.ts"]
+      "drift/react": ["app/hooks/index.ts"]
     }
   },
-  "include": ["src"]
+  "include": ["app"]
 }

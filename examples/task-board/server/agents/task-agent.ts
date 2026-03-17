@@ -7,7 +7,7 @@
  *   - Bidirectional: agent changes board, user changes board, agent sees both
  */
 
-import { Agent, tool } from '../../../packages/drift/src/index.ts';
+import { Agent, tool } from '../../../../packages/drift/src/index.ts';
 import { TaskBoardWindow, type TaskItem } from '../windows/task-window.tsx';
 
 export class TaskAgent extends Agent {

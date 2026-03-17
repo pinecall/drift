@@ -1,5 +1,5 @@
 node_modules/
-examples/with-react-tasks/ui/dist/
+examples/task-board/dist/
 
 .env
 .env.local
