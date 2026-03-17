@@ -7,7 +7,7 @@
  * Run: node --import tsx examples/07-multi-turn.ts
  */
 
-import { Agent, tool } from '../packages/drift/src/index.ts';
+import { Agent, tool } from '../../packages/drift/src/index.ts';
 
 class NotesAgent extends Agent {
     model = 'haiku';

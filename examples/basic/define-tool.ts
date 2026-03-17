@@ -7,7 +7,7 @@
  * Run: node --import tsx examples/06-define-tool.ts
  */
 
-import { Agent, defineTool } from '../packages/drift/src/index.ts';
+import { Agent, defineTool } from '../../packages/drift/src/index.ts';
 
 class TodoAgent extends Agent {
     model = 'haiku';

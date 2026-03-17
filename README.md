@@ -1908,9 +1908,9 @@ drift/
 │   ├── run.ts                    # Zero-dep test runner
 │   ├── unit/                     # 123 unit tests
 │   └── integration/              # 11 integration tests
-├── examples/                     # 8 runnable examples + 1 React UI
-│   ├── 01-quick.ts … 08-server.ts
-│   └── with-react-tasks/         # Task board demo + session sidebar
+├── examples/
+│   ├── basic/                    # 8 standalone script examples
+│   └── task-board/               # Full React app — task board + session sidebar
 ├── .nvmrc                        # Node 24
 ├── package.json                  # Single npm package with subpath exports
 ├── tsconfig.json
@@ -1922,20 +1922,20 @@ drift/
 ## Examples
 
 ```bash
-node --import tsx examples/<file>.ts
+node --import tsx examples/basic/<file>.ts
 ```
 
-| # | File | Shows |
-|---|---|---|
-| 01 | `01-quick.ts` | Minimal agent — inline prompt, single `run()` |
-| 02 | `02-custom-tools.ts` | `@tool` decorator showcase: inheritance, typed params, required vs optional, multi-tool composition |
-| 03 | `03-streaming.ts` | `stream()` API — real-time token output |
-| 04 | `04-builtin-tools.ts` | Auto-loaded prompt file + built-in filesystem tools |
-| 05 | `05-thinking.ts` | Extended thinking mode + calculator tool |
-| 06 | `06-define-tool.ts` | `defineTool()` JS API — no decorators needed |
-| 07 | `07-multi-turn.ts` | 5-turn conversation with context memory + history dump |
-| 08 | `08-server.ts` | `DriftServer` — programmatic server with agents + window |
-| — | `with-react-tasks/` | Task board demo — bidirectional window reactivity, agent tools ↔ UI interactions, multi-session sidebar |
+| File | Shows |
+|---|---|
+| `quick.ts` | Minimal agent — inline prompt, single `run()` |
+| `custom-tools.ts` | `@tool` decorator: inheritance, typed params, required vs optional |
+| `streaming.ts` | `stream()` API — real-time token output |
+| `builtin-tools.ts` | Auto-loaded prompt file + built-in filesystem tools |
+| `thinking.ts` | Extended thinking mode + calculator tool |
+| `define-tool.ts` | `defineTool()` JS API — no decorators needed |
+| `multi-turn.ts` | 5-turn conversation with context memory |
+| `server.ts` | `DriftServer` — programmatic server with agents + window |
+| `task-board/` | Full React app — bidirectional window reactivity, multi-session sidebar |
 
 ---
 
