@@ -19,13 +19,13 @@ export const T = {
     orange: '#fb923c',
 } as const
 
-/** Agent-specific colors */
-export const AGENT_COLORS: Record<string, { color: string; bg: string; icon: string; label: string }> = {
-    'task-agent':     { color: '#818cf8', bg: '#818cf812', icon: '⚡', label: 'Task Agent' },
-    'planner-agent':  { color: '#22d3ee', bg: '#22d3ee12', icon: '📋', label: 'Planner' },
-    'reviewer-agent': { color: '#f472b6', bg: '#f472b612', icon: '🔍', label: 'Reviewer' },
+/** Agent-specific colors — icon is a lucide-react icon name */
+export const AGENT_COLORS: Record<string, { color: string; bg: string; lucideIcon: string; label: string }> = {
+    'task-agent':     { color: '#818cf8', bg: '#818cf812', lucideIcon: 'Zap',        label: 'Task Agent' },
+    'planner-agent':  { color: '#22d3ee', bg: '#22d3ee12', lucideIcon: 'ClipboardList', label: 'Planner' },
+    'reviewer-agent': { color: '#f472b6', bg: '#f472b612', lucideIcon: 'Search',     label: 'Reviewer' },
 }
 
 export function getAgentStyle(name: string) {
-    return AGENT_COLORS[name] || { color: T.t3, bg: T.surfaceAlt, icon: '🤖', label: name }
+    return AGENT_COLORS[name] || { color: T.t3, bg: T.surfaceAlt, lucideIcon: 'Bot', label: name }
 }

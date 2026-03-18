@@ -65,7 +65,7 @@ const SessionItem = memo(function SessionItem({ session, isActive, onClick, onDe
                                 background: style.bg,
                                 padding: '1px 6px',
                                 borderRadius: '4px',
-                            }}>{style.icon} {style.label}</span>
+                            }}>{style.label}</span>
                         )
                     })()}
                     <span>{age}</span>

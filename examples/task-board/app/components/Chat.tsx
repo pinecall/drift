@@ -1,27 +1,42 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { User, Send, Square, Trash2, Loader2, CheckCircle2, Brain, ChevronDown, ChevronRight } from 'lucide-react'
+import { User, Send, Square, Trash2, Loader2, CheckCircle2, Brain, ChevronDown, ChevronRight, Zap, ClipboardList, Search, Bot } from 'lucide-react'
 import { useChat, type ChatMessage, type MessagePart } from 'drift/react'
 import { T, getAgentStyle, AGENT_COLORS } from '../lib/theme'
 import { StreamingMarkdown } from './StreamingMarkdown'
+
+// ── Agent icon mapping ──
+const AGENT_ICONS: Record<string, React.ReactNode> = {
+    'Zap': <Zap size={13} />,
+    'ClipboardList': <ClipboardList size={13} />,
+    'Search': <Search size={13} />,
+    'Bot': <Bot size={13} />,
+}
+
+function agentIcon(name: string, size = 13) {
+    const style = getAgentStyle(name)
+    return AGENT_ICONS[style.lucideIcon] || <Bot size={size} />
+}
 
 // ── Agent Tabs ──
 const AGENTS = Object.entries(AGENT_COLORS).map(([name, cfg]) => ({ name, ...cfg }))
 
 function AgentTabs({ selected, onSelect }: { selected: string; onSelect: (name: string) => void }) {
     return (
-        <div className="flex gap-1" style={{ padding: '0 4px' }}>
+        <div className="flex gap-1.5">
             {AGENTS.map(a => {
                 const active = a.name === selected
+                const IconEl = AGENT_ICONS[a.lucideIcon] || <Bot size={13} />
                 return (
                     <button key={a.name} onClick={() => onSelect(a.name)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] transition-all cursor-pointer"
+                        className="flex items-center gap-2 rounded-lg text-[11px] transition-all cursor-pointer"
                         style={{
-                            background: active ? a.color + '18' : 'transparent',
+                            padding: '7px 14px',
+                            background: active ? a.color + '15' : 'transparent',
                             color: active ? a.color : T.t4,
                             border: active ? `1px solid ${a.color}30` : '1px solid transparent',
                             fontWeight: active ? 500 : 400,
                         }}>
-                        <span>{a.icon}</span>
+                        <span style={{ color: active ? a.color : T.t4, display: 'flex' }}>{IconEl}</span>
                         <span>{a.label}</span>
                     </button>
                 )
@@ -100,7 +115,7 @@ function Message({ msg, agentName }: { msg: ChatMessage; agentName: string }) {
         <div className="flex gap-3.5">
             <div className="w-7 h-7 rounded-lg shrink-0 flex items-center justify-center mt-0.5"
                 style={{ background: color + '12' }}>
-                {isUser ? <User size={13} style={{ color }} /> : <span style={{ fontSize: '13px' }}>{agentStyle.icon}</span>}
+                {isUser ? <User size={13} style={{ color }} /> : <span style={{ color, display: 'flex' }}>{agentIcon(agentName)}</span>}
             </div>
             <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-2">
@@ -178,7 +193,7 @@ export function Chat({ sessionId }: { sessionId: string }) {
             <div className="flex items-center shrink-0"
                 style={{ background: T.surface, borderBottom: `1px solid ${T.border}`, padding: '0 20px', height: '48px', gap: '12px' }}>
                 <div className="w-7 h-7 rounded-md flex items-center justify-center" style={{ background: agentStyle.color + '12' }}>
-                    <span style={{ fontSize: '14px' }}>{agentStyle.icon}</span>
+                    <span style={{ color: agentStyle.color, display: 'flex' }}>{agentIcon(activeAgent || selectedAgent, 14)}</span>
                 </div>
                 <span className="text-[13px] font-medium" style={{ color: agentStyle.color }}>@{activeAgent || selectedAgent}</span>
                 <div className="flex items-center gap-1.5">
@@ -204,7 +219,7 @@ export function Chat({ sessionId }: { sessionId: string }) {
                 style={{ padding: '24px 20px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 {messages.length === 0 && !isStreaming && (
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                        <span style={{ fontSize: '28px' }}>{agentStyle.icon}</span>
+                        <span style={{ color: agentStyle.color, display: 'flex' }}>{agentIcon(selectedAgent, 28)}</span>
                         <div style={{ fontSize: '14px', color: T.t2 }}>{agentStyle.label}</div>
                         <div style={{ fontSize: '12px', color: T.t4, textAlign: 'center', maxWidth: '280px', lineHeight: '1.6' }}>
                             {selectedAgent === 'task-agent' && 'Create, move, update, and delete tasks. Try: "Plan a landing page project"'}

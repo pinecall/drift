@@ -73,8 +73,9 @@ export function useChat(agentName: string, options?: { sessionId?: string }): Us
     // If external sessionId changes, update the ref
     const sessionId = options?.sessionId || sessionIdRef.current;
 
-    // When sessionId changes (e.g. switching session), clear local messages and request history
+    // If external sessionId changes (e.g. switching session), clear local messages and request history
     const prevSessionIdRef = useRef(sessionId);
+    const prevAgentRef = useRef(agentName);
     useEffect(() => {
         if (sessionId !== prevSessionIdRef.current) {
             prevSessionIdRef.current = sessionId;
@@ -82,10 +83,20 @@ export function useChat(agentName: string, options?: { sessionId?: string }): Us
             setMessages([]);
             setIsStreaming(false);
             setLastError(null);
-            // Request history for the new session
             wsSend({ action: 'chat:history', agent: activeAgent, sessionId });
         }
     }, [sessionId, activeAgent, wsSend]);
+
+    // If agentName prop changes (e.g. user switched agent tab), sync activeAgent
+    useEffect(() => {
+        if (agentName !== prevAgentRef.current) {
+            prevAgentRef.current = agentName;
+            setActiveAgent(agentName);
+            setMessages([]);
+            setIsStreaming(false);
+            setLastError(null);
+        }
+    }, [agentName]);
 
     // ── Helper: update last assistant message ──
     function updateLast(updater: (msg: ChatMessage) => ChatMessage) {
