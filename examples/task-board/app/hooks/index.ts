@@ -6,6 +6,7 @@ export { DriftProvider, useDriftContext } from '../../../../packages/drift-react
 export { useChat } from '../../../../packages/drift-react/src/use-chat.ts'
 export { useThread } from '../../../../packages/drift-react/src/use-thread.ts'
 export { useWindow } from '../../../../packages/drift-react/src/use-window.ts'
+export { useWorkspace } from '../../../../packages/drift-react/src/use-workspace.ts'
 export { useDrift } from '../../../../packages/drift-react/src/use-drift.ts'
 export { useSessions } from '../../../../packages/drift-react/src/use-sessions.ts'
 export type { AgentInfo, AgentConfig, ChatMessage, ToolCallInfo, WindowItem, MessagePart, ServerEvent, ClientMessage } from '../../../../packages/drift-react/src/types.ts'

@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
-import { useWindow, useChat, useThread } from 'drift/react'
+import { useWindow, useChat, useThread, useWorkspace } from 'drift/react'
 import { ArrowRight, Trash2, Circle, LayoutGrid, Wifi, WifiOff, Loader2, CheckCircle2, MessageCircle, X, Minus, Send, Maximize2 } from 'lucide-react'
 import { useDriftContext } from 'drift/react'
 import { T } from '../lib/theme'
@@ -476,6 +476,7 @@ export function Board({ sessionId }: { sessionId: string }) {
     const { items, state, updateItem, removeItem, setState } = useWindow<TaskItem, BoardState>()
     const { nudge, isStreaming } = useChat('task-agent', { sessionId })
     const { connected } = useDriftContext()
+    const { state: wsState } = useWorkspace()
 
     const tasks = items as TaskItem[]
     const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -584,6 +585,11 @@ export function Board({ sessionId }: { sessionId: string }) {
                 <span className="text-[11px] rounded-full" style={{ background: T.surfaceAlt, color: T.t3, padding: '2px 10px' }}>
                     {tasks.length} tasks
                 </span>
+                {wsState?.stats && (
+                    <span className="text-[10px]" style={{ color: T.t4 }}>
+                        📊 {wsState.stats.totalCreated || 0} created · {wsState.stats.totalCompleted || 0} done · {wsState.stats.agentInteractions || 0} AI
+                    </span>
+                )}
                 <div className="flex-1" />
                 <div className="flex items-center gap-1.5 text-[11px]" style={{ color: connected ? T.green : T.red }}>
                     {connected ? <Wifi size={12} /> : <WifiOff size={12} />}
@@ -604,7 +610,7 @@ export function Board({ sessionId }: { sessionId: string }) {
                     Click to expand · ✨ explain · <MessageCircle size={9} style={{ display: 'inline', verticalAlign: 'middle' }} /> thread · Agent sees all changes
                 </span>
                 <span className="text-[10px]" style={{ color: T.t4 }}>
-                    {(state?.activity?.length || 0)} actions logged
+                    {(state?.activity?.length || 0)} actions logged{wsState?.stats ? ` · workspace v${Object.values(wsState.stats).reduce((s: number, v: any) => s + (typeof v === 'number' ? v : 0), 0)}` : ''}
                 </span>
             </div>
 

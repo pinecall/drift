@@ -1503,6 +1503,140 @@ The agent won't see disabled items in its prompt, but they're preserved for when
 
 ---
 
+## Workspace
+
+Shared reactive state container for **multi-agent collaboration**. Unlike Window (per-agent domain data), Workspace is a single global state shared across ALL agents.
+
+| | **Window** | **Workspace** |
+|---|---|---|
+| Data | Items + State | State only (flat, keyed by "slices") |
+| Scope | Per-agent (shared by class) | Global — one per server |
+| Agent sees | Everything via `render()` | Only selected slices via `workspaceSlices` |
+| Purpose | Domain objects (tasks, files) | Cross-agent shared context |
+
+### Creating a Workspace
+
+```typescript
+import { Workspace, DriftServer } from 'drift';
+
+// Define workspace state type
+interface SprintState {
+    metrics: { velocity: number; completed: number; remaining: number };
+    reviews: Array<{ taskId: string; score: number }>;
+    activity: string[];
+}
+
+// Create workspace with initial state
+const workspace = new Workspace<SprintState>('sprint', {
+    metrics: { velocity: 0, completed: 0, remaining: 0 },
+    reviews: [],
+    activity: [],
+});
+
+// Pass to server — all agents get access
+const server = new DriftServer({ workspace });
+await server.start();
+```
+
+### API
+
+```typescript
+// ── Read (safe — returns structuredClone) ──
+workspace.state;              // Readonly<S> — full state
+workspace.select('metrics');  // deep copy of one slice
+workspace.version('metrics'); // current version number
+workspace.versions;           // all version numbers
+
+// ── Write ──
+workspace.setState({ activity: ['Agent started'] });  // shallow merge
+workspace.setSlice('metrics', { velocity: 8, completed: 12, remaining: 5 });  // atomic
+
+// ── Optimistic locking (concurrent-safe) ──
+const v = workspace.version('metrics');
+const ok = workspace.setSlice('metrics', newMetrics, v);
+// ok = false if another agent already wrote → caller retries with fresh data
+
+// ── Events ──
+workspace.on('change', (event) => {
+    event.action;    // 'setState' | 'setSlice' | 'sync'
+    event.slice;     // which slice changed (for setSlice)
+    event.state;     // full state snapshot
+    event.version;   // version of the changed slice
+    event.versions;  // all current versions
+});
+
+// ── Serialization ──
+workspace.toJSON();    // { name, state, versions }
+workspace.loadJSON(data);
+```
+
+### Agent Binding
+
+Agents declare which workspace slices they need:
+
+```typescript
+class MetricsAgent extends Agent {
+    prompt = 'You track sprint metrics.';
+    workspaceSlices = ['metrics', 'activity'];  // only sees these slices
+}
+
+class ReviewAgent extends Agent {
+    prompt = 'You review completed tasks.';
+    workspaceSlices = ['reviews', 'metrics'];
+}
+```
+
+The selected slices are injected into the agent's system prompt as XML:
+
+```xml
+<workspace name="sprint">
+  <slice name="metrics" v="3">
+    {"velocity": 8, "completed": 12, "remaining": 5}
+  </slice>
+  <slice name="activity" v="7">
+    ["Agent started", "Completed task-1"]
+  </slice>
+</workspace>
+```
+
+Agents also access workspace in tools via `ctx.workspace`.
+
+### UI Sync (`useWorkspace`)
+
+```typescript
+import { useWorkspace } from 'drift-react';
+
+function Dashboard() {
+    const { state, setState, setSlice, versions } = useWorkspace<SprintState>();
+
+    return (
+        <div>
+            <h2>Velocity: {state.metrics?.velocity}</h2>
+            <button onClick={() => setSlice('metrics', { ...state.metrics, velocity: 10 })}>
+                Update
+            </button>
+        </div>
+    );
+}
+```
+
+| Property/Method | Type | Description |
+|---|---|---|
+| `state` | `S` | Full workspace state (reactive) |
+| `setState(patch)` | `void` | Shallow merge into state |
+| `setSlice(key, value)` | `void` | Replace a single slice |
+| `versions` | `Record<string, number>` | Per-slice version numbers |
+
+### WS Protocol
+
+| Client Action | Server Event | Description |
+|---|---|---|
+| `workspace:setState` | `workspace:changed` | Shallow merge state |
+| `workspace:setSlice` | `workspace:changed` | Replace one slice |
+| — (on connect) | `workspace:changed` | Full state sync |
+
+Workspace state is **automatically persisted** to SQLite (`workspace_state` table) with debounced writes (max 1x/100ms). Restored on server restart.
+
 ## Drift Server
 
 HTTP + WebSocket server that exposes agents and windows to any UI. Serves a React build as static files.
