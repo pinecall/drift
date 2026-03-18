@@ -10,6 +10,8 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { Agent } from '../core/agent.ts';
 import { Window } from '../core/window.ts';
+import { Trigger } from '../core/trigger.ts';
+import { Pipeline } from '../core/pipeline.ts';
 import { DeveloperAgent } from '../agents/developer.ts';
 import { DeveloperLiteAgent } from '../agents/developer-lite.ts';
 import { ResearcherAgent } from '../agents/researcher.ts';
@@ -23,6 +25,8 @@ export interface DriftConfig {
     include: string[];
     agentsDir: string;
     windowsDir: string;
+    triggersDir: string;
+    pipelinesDir: string;
     /** Path to UI build directory (served as static files). null = no UI. */
     ui: string | null;
     /** Files to pre-load into the window on startup (relative to cwd) */
@@ -46,6 +50,8 @@ const DEFAULTS: DriftConfig = {
     include: [],
     agentsDir: './agents',
     windowsDir: './windows',
+    triggersDir: './triggers',
+    pipelinesDir: './pipelines',
     ui: null,
     preload: [],
     cwd: process.cwd(),
@@ -179,4 +185,81 @@ function _shareWindow(agent: Agent, pool: Map<string, Window<any, any>>, cwd: st
 /** List available built-in agent names */
 export function listBuiltinAgents(): string[] {
     return Object.keys(BUILTIN_AGENTS);
+}
+
+// ── Trigger Discovery ───────────────────────────────
+
+import { classNameToKebab } from '../core/prompt.ts';
+
+/**
+ * Load triggers from triggersDir.
+ * Same auto-discovery pattern as loadAgents.
+ */
+export async function loadTriggers(config: DriftConfig): Promise<Trigger[]> {
+    const triggers: Trigger[] = [];
+    const dir = path.resolve(config.cwd, config.triggersDir);
+    if (!fs.existsSync(dir)) return triggers;
+
+    const entries = fs.readdirSync(dir).filter(f => f.endsWith('.ts') || f.endsWith('.js'));
+    for (const file of entries) {
+        try {
+            const fullPath = path.resolve(dir, file);
+            const mod = await import(fullPath);
+            const ExportedClass = mod.default || Object.values(mod).find(
+                (v: any) => typeof v === 'function' && v.prototype instanceof Trigger
+            );
+
+            if (!ExportedClass) {
+                console.warn(`  ⚠ ${file}: no Trigger subclass found`);
+                continue;
+            }
+
+            const trigger = new (ExportedClass as any)();
+            // Auto-name from class name if not explicitly set
+            if (!trigger.name) {
+                trigger.name = classNameToKebab((ExportedClass as any).name);
+            }
+            triggers.push(trigger);
+        } catch (err: any) {
+            console.warn(`  ⚠ Failed to load trigger ${file}: ${err.message}`);
+        }
+    }
+    return triggers;
+}
+
+// ── Pipeline Discovery ─────────────────────────────
+
+/**
+ * Load pipelines from pipelinesDir.
+ * Same auto-discovery pattern as loadTriggers.
+ */
+export async function loadPipelines(config: DriftConfig): Promise<Pipeline[]> {
+    const pipelines: Pipeline[] = [];
+    const dir = path.resolve(config.cwd, config.pipelinesDir);
+    if (!fs.existsSync(dir)) return pipelines;
+
+    const entries = fs.readdirSync(dir).filter(f => f.endsWith('.ts') || f.endsWith('.js'));
+    for (const file of entries) {
+        try {
+            const fullPath = path.resolve(dir, file);
+            const mod = await import(fullPath);
+            const ExportedClass = mod.default || Object.values(mod).find(
+                (v: any) => typeof v === 'function' && v.prototype instanceof Pipeline
+            );
+
+            if (!ExportedClass) {
+                console.warn(`  ⚠ ${file}: no Pipeline subclass found`);
+                continue;
+            }
+
+            const pipeline = new (ExportedClass as any)();
+            if (!pipeline.name) {
+                pipeline.name = classNameToKebab((ExportedClass as any).name);
+            }
+            pipelines.push(pipeline);
+        } catch (err: any) {
+            console.warn(`  ⚠ Failed to load pipeline ${file}: ${err.message}`);
+        }
+    }
+    return pipelines;
 }

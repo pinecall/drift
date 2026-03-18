@@ -31,6 +31,8 @@ import {
     buildThinkingConfig, listModels,
 } from '../provider/models.ts';
 import { registerBuiltinTools, registerSelectedTools } from '../tools/index.ts';
+import type { DispatchFn } from './trigger.ts';
+import type { WorkspaceChangeEvent } from './workspace.ts';
 import type {
     AgentResult, AgentOptions, ToolSchema, ToolDefinition,
     ModelConfig, Effort, ContentBlock, StreamToolCall,
@@ -127,6 +129,29 @@ export class Agent extends EventEmitter {
     /** Which workspace slices this agent sees in its prompt. null/undefined = all. */
     workspaceSlices?: string[];
 
+    /** Enable dispatch_agent tool — allows this agent to invoke other agents. */
+    canDispatch: boolean = false;
+
+    /**
+     * Workspace slices to subscribe to (Blackboard pattern).
+     * When any subscribed slice changes, this agent is auto-dispatched.
+     * Internally generates Trigger instances during server startup.
+     * 
+     * Simple: `subscribes = ['prices', 'signals']`
+     * With config: `subscribes = [{ slice: 'prices', cooldown: 30_000 }]`
+     */
+    subscribes?: (string | { slice: string; cooldown?: number })[];
+
+    /** Default cooldown for workspace subscriptions in ms. Default: 5000. */
+    subscribeCooldown: number = 5_000;
+
+    /**
+     * Custom handler for workspace slice changes (Blackboard pattern).
+     * Return the dispatch message, or null to skip the dispatch.
+     * If not defined, a default message with the slice name and value is used.
+     */
+    onSliceChange?(slice: string, value: any, event: WorkspaceChangeEvent): string | null;
+
     /** Built-in tools to register. Categories: 'edit' | 'filesystem' | 'shell' | 'all', or individual names. Empty = none */
     builtinTools: string[] = [];
 
@@ -138,6 +163,9 @@ export class Agent extends EventEmitter {
 
     /** Thinking budget (Haiku only) */
     thinkingBudget: number | null = null;
+
+    /** @internal Dispatch function — injected by DriftServer for canDispatch agents. */
+    _dispatchFn?: DispatchFn;
 
     // ── Internal state ──
 
@@ -363,6 +391,37 @@ export class Agent extends EventEmitter {
         if (this._decoratorsCollected) return;
         this._decoratorsCollected = true;
         this._registry.registerDecoratedTools(this);
+
+        // Auto-register dispatch_agent tool when canDispatch is enabled
+        if (this.canDispatch) {
+            this._registry.register({
+                name: 'dispatch_agent',
+                description: 'Dispatch another agent to perform a task. The dispatched agent runs with access to the shared window and workspace, and returns its response as text.',
+                schema: {
+                    agent: { type: 'string', description: 'Name of the agent to dispatch (e.g. "task-agent", "reviewer")' },
+                    message: { type: 'string', description: 'Instruction/message for the dispatched agent' },
+                },
+                required: ['agent', 'message'],
+                execute: async (params: Record<string, any>, ctx: ToolContext) => {
+                    if (!ctx.dispatch) {
+                        return { success: false, result: 'Dispatch not available — agent must be running inside a DriftServer' };
+                    }
+                    try {
+                        const result = await ctx.dispatch(params.agent, params.message, {
+                            source: `agent:${this.constructor.name}`,
+                        });
+                        return {
+                            success: true,
+                            result: result.aborted
+                                ? `Agent "${params.agent}" was aborted.`
+                                : result.text || '(no response)',
+                        };
+                    } catch (err: any) {
+                        return { success: false, result: `Dispatch failed: ${err.message}` };
+                    }
+                },
+            });
+        }
     }
 
     // ── Agentic Loop ────────────────────────────────────
@@ -574,7 +633,7 @@ export class Agent extends EventEmitter {
             this.emit('tool:execute', { name: toolCall.name, params });
 
             const start = Date.now();
-            const ctx: ToolContext = { cwd: this._cwd, window: this.window, workspace: this.workspace };
+            const ctx: ToolContext = { cwd: this._cwd, window: this.window, workspace: this.workspace, dispatch: this._dispatchFn };
 
             try {
                 const result = await this._registry.execute(toolCall.name, params, ctx);

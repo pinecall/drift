@@ -11,6 +11,8 @@ export { Conversation, type TrimStats } from './core/conversation.ts';
 export { Cache } from './core/cache.ts';
 export { Window, type WindowItem, type WindowChangeEvent, type ChangeAction } from './core/window.ts';
 export { Workspace, type WorkspaceChangeEvent, type WorkspaceAction } from './core/workspace.ts';
+export { Trigger, TriggerManager, type DispatchFn, type DispatchResult, type DispatchOptions } from './core/trigger.ts';
+export { Pipeline, PipelineManager, type PipelineStep, type PipelineContext, type PipelineResult, type PipelineStepResult } from './core/pipeline.ts';
 export { MCP, type MCPServerConfig } from './core/mcp.ts';
 export { Pricing } from './core/pricing.ts';
 export { Provider } from './provider/provider.ts';

@@ -13,11 +13,12 @@
 import * as http from 'node:http';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { loadConfig, loadAgents, type DriftConfig, type LoadedAgent } from './config.ts';
+import { loadConfig, loadAgents, loadTriggers, loadPipelines, type DriftConfig, type LoadedAgent } from './config.ts';
 import { createWSHandler } from './ws.ts';
 import { detectViteConfig, spawnViteDev } from './vite-dev.ts';
 import type { Agent } from '../core/agent.ts';
 import type { Window } from '../core/window.ts';
+import { Trigger } from '../core/trigger.ts';
 import type { Workspace } from '../core/workspace.ts';
 import type { ChildProcess } from 'node:child_process';
 import type { Storage } from '../core/storage.ts';
@@ -47,6 +48,8 @@ export interface DriftServerOptions extends Partial<DriftConfig> {
     storage?: Storage | boolean;
     auth?: DriftAuth;
     workspace?: Workspace<any>;
+    triggersDir?: string;
+    pipelinesDir?: string;
 }
 
 export class DriftServer {
@@ -128,7 +131,94 @@ export class DriftServer {
         // 6. WebSocket handler
         this._ws = createWSHandler(this._httpServer, this._agents, this._windows, this.storage || undefined, this.auth, this._workspace || undefined);
 
-        // 6. Pre-load files from config
+        // 6b. Load and wire triggers
+        const triggers = await loadTriggers(this.config);
+        if (triggers.length > 0) {
+            for (const trigger of triggers) {
+                // Inject workspace + window references
+                trigger.workspace = this._workspace || undefined;
+                // Give trigger access to the first shared window (most common case)
+                if (this._windows.size > 0) {
+                    trigger.window = this._windows.values().next().value;
+                }
+                // Inject dispatch function
+                trigger._dispatchFn = this._ws.dispatch;
+                // Add to manager
+                this._ws.triggerManager.add(trigger);
+            }
+        }
+
+        // 6b.2 Auto-generate triggers from agent.subscribes (Blackboard pattern)
+        let subscribeCount = 0;
+        for (const loaded of this._agents) {
+            const agent = loaded.agent;
+            if (!agent.subscribes || agent.subscribes.length === 0) continue;
+
+            for (const sub of agent.subscribes) {
+                const sliceName = typeof sub === 'string' ? sub : sub.slice;
+                const cooldown = typeof sub === 'string' ? agent.subscribeCooldown : (sub.cooldown ?? agent.subscribeCooldown);
+                const agentName = loaded.name;
+
+                // Create an inline Trigger that watches this workspace slice
+                const trigger = new Trigger();
+                trigger.name = `__subscribe__:${agentName}:${sliceName}`;
+                trigger.watch = 'workspace';
+                trigger.cooldown = cooldown;
+                trigger.workspace = this._workspace || undefined;
+                if (this._windows.size > 0) {
+                    trigger.window = this._windows.values().next().value;
+                }
+                trigger._dispatchFn = this._ws.dispatch;
+
+                // Condition: slice matches
+                trigger.condition = (event: any) => {
+                    if (event.action === 'setSlice') return event.slice === sliceName;
+                    if (event.action === 'setState' && event.patch) return sliceName in event.patch;
+                    return false;
+                };
+
+                // Run: build message and dispatch
+                trigger.run = async (event: any) => {
+                    const value = event.state?.[sliceName];
+                    let message: string | null;
+
+                    // Try agent's custom handler first
+                    if (agent.onSliceChange) {
+                        message = agent.onSliceChange(sliceName, value, event);
+                    } else {
+                        // Default message with slice preview
+                        const preview = typeof value === 'string' ? value.slice(0, 500)
+                            : JSON.stringify(value, null, 2)?.slice(0, 500) || '';
+                        message = `Workspace slice "${sliceName}" was updated:\n\n${preview}`;
+                    }
+
+                    if (message !== null) {
+                        await trigger._dispatchFn!(agentName, message, {
+                            source: `subscribe:${agentName}:${sliceName}`,
+                            silent: false,
+                        });
+                    }
+                };
+
+                this._ws.triggerManager.add(trigger);
+                subscribeCount++;
+            }
+        }
+
+        // 6c. Load and wire pipelines
+        const pipelines = await loadPipelines(this.config);
+        if (pipelines.length > 0) {
+            for (const pipeline of pipelines) {
+                pipeline.workspace = this._workspace || undefined;
+                if (this._windows.size > 0) {
+                    pipeline.window = this._windows.values().next().value;
+                }
+                pipeline._dispatchFn = this._ws.dispatch;
+                this._ws.pipelineManager.add(pipeline);
+            }
+        }
+
+        // 6d. Pre-load files from config
         if (this.config.preload.length > 0) {
             this.openFiles(this.config.preload);
         }
@@ -148,6 +238,27 @@ export class DriftServer {
                 }
                 if (this._workspace) {
                     console.log(`  Workspace: ${this._workspace.name}`);
+                }
+                if (triggers.length > 0) {
+                    console.log(`  Triggers (${triggers.length}):`);
+                    for (const t of triggers) console.log(`    • ${t.name} (watch: ${t.watch}, cooldown: ${t.cooldown}ms)`);
+                }
+                if (pipelines.length > 0) {
+                    console.log(`  Pipelines (${pipelines.length}):`);
+                    for (const p of pipelines) {
+                        const stepNames = p.steps.map((s: any) => typeof s === 'string' ? s : s.agent).join(' → ');
+                        console.log(`    • ${p.name} (${stepNames})`);
+                    }
+                }
+                if (subscribeCount > 0) {
+                    console.log(`  Subscriptions (${subscribeCount}):`);
+                    for (const loaded of this._agents) {
+                        const agent = loaded.agent;
+                        if (agent.subscribes && agent.subscribes.length > 0) {
+                            const slices = agent.subscribes.map((s: any) => typeof s === 'string' ? s : s.slice).join(', ');
+                            console.log(`    • ${loaded.name} → [${slices}]`);
+                        }
+                    }
                 }
                 if (this._uiDir) console.log(`  UI:        ${this._uiDir}`);
                 if (this.config.preload.length > 0) console.log(`  Preloaded: ${this.config.preload.length} file(s)`);

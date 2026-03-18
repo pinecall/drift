@@ -10,6 +10,9 @@
  * Actions:
  *   chat:send, chat:abort, chat:clear, chat:history — Chat operations
  *   chat:settings — Runtime model/thinking/effort changes
+ *   dispatch:run — Programmatic agent dispatch
+ *   trigger:list, trigger:enable, trigger:disable — Trigger management
+ *   pipeline:run, pipeline:list — Pipeline execution
  *   window:* — Window CRUD
  *   agents:list, agents:detail — Agent queries
  *   models:list — Available model catalog
@@ -28,6 +31,8 @@ import { listModels, getModel } from '../provider/models.ts';
 import type { Effort } from '../types.ts';
 import type { Storage } from '../core/storage.ts';
 import { NoAuth, type DriftAuth, type DriftUser } from '../core/auth.ts';
+import { TriggerManager, type DispatchFn, type DispatchResult, type DispatchOptions } from '../core/trigger.ts';
+import { PipelineManager } from '../core/pipeline.ts';
 
 // ── Types ───────────────────────────────────────────
 
@@ -77,6 +82,8 @@ export function createWSHandler(
     for (const [className, window] of windows) {
         window.on('change', (event) => {
             broadcast({ event: 'window:changed', windowClass: className, ...event });
+            // Evaluate triggers against window changes
+            triggerManager.evaluate('window', event);
         });
     }
 
@@ -91,7 +98,121 @@ export function createWSHandler(
                 if (_workspacePersistTimer) clearTimeout(_workspacePersistTimer);
                 _workspacePersistTimer = setTimeout(() => _persistWorkspace(), 100);
             }
+            // Evaluate triggers against workspace changes
+            triggerManager.evaluate('workspace', event);
         });
+    }
+
+    // ── Trigger Manager ─────────────────────────────
+
+    const triggerManager = new TriggerManager();
+    triggerManager.on('fired', (data) => {
+        broadcast({ event: 'trigger:fired', trigger: data.trigger, source: data.source });
+    });
+
+    // Pipeline manager
+    const pipelineManager = new PipelineManager();
+    pipelineManager.on('started', (data) => {
+        broadcast({ event: 'pipeline:started', ...data });
+    });
+    pipelineManager.on('step', (data) => {
+        broadcast({ event: 'pipeline:step', ...data });
+    });
+    pipelineManager.on('done', (data) => {
+        broadcast({ event: 'pipeline:done', ...data });
+    });
+    pipelineManager.on('error', (data) => {
+        broadcast({ event: 'pipeline:error', ...data });
+    });
+
+    // ── Dispatch (inter-agent coordination primitive) ──
+
+    /**
+     * Dispatch an agent to perform a task.
+     * Creates an internal Session, runs the agent, and returns the result.
+     * Used by: triggers, agents (via dispatch_agent tool), and the UI (dispatch:run).
+     */
+    const dispatch: DispatchFn = async (
+        agentName: string,
+        message: string,
+        options?: DispatchOptions,
+    ): Promise<DispatchResult> => {
+        const agent = _resolveAgent(agentName);
+        const sid = options?.sessionId || `__dispatch__:${agentName}:${Date.now()}`;
+        const silent = options?.silent ?? false;
+        const source = options?.source || 'dispatch';
+
+        // Get or create session
+        let session = sessions.get(sid);
+        if (!session) {
+            session = new Session(agent, { id: sid });
+            sessions.set(sid, session);
+        }
+
+        // Broadcast start
+        if (!silent) {
+            broadcast({ event: 'dispatch:started', agent: agentName, sessionId: sid, source });
+        }
+
+        // Wire agent events → broadcast (unless silent)
+        const runId = _claimAgentRun(agentName);
+        const cleanup = _wireAgentEvents(
+            agent, agentName, sid,
+            silent ? () => {} : broadcast,
+            runId,
+        );
+
+        try {
+            // Prepend timestamp + source context
+            const now = new Date();
+            const ts = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+            const stamped = `[${ts}] [dispatch from ${source}] ${message}`;
+
+            const result = await session.run(stamped, { timeout: options?.timeout });
+
+            // Broadcast done
+            if (!silent) {
+                broadcast({
+                    event: 'dispatch:done',
+                    agent: agentName,
+                    sessionId: sid,
+                    source,
+                    result: { text: result.text?.slice(0, 500), cost: result.cost },
+                });
+            }
+
+            // Persist
+            if (storage) {
+                storage.saveSession(session.toJSON());
+                storage.saveMessages(sid, session.conversation.toJSON());
+                if (agent.window) {
+                    const winClass = agent.window.constructor.name;
+                    storage.saveWindow(sid, winClass, agent.window.toJSON());
+                }
+            }
+
+            return {
+                text: result.text,
+                cost: result.cost,
+                toolCalls: result.toolCalls.map(tc => ({ name: tc.name, params: tc.input })),
+                sessionId: sid,
+                aborted: result.aborted,
+            };
+        } catch (err: any) {
+            if (!silent) {
+                broadcast({ event: 'dispatch:error', agent: agentName, sessionId: sid, source, error: err.message });
+            }
+            throw err;
+        } finally {
+            cleanup();
+        }
+    };
+
+    // Inject dispatch into all canDispatch agents
+    for (const { agent } of agents) {
+        if (agent.canDispatch) {
+            agent._dispatchFn = dispatch;
+        }
     }
 
     // ── Connection handler ──────────────────────────
@@ -656,10 +777,83 @@ export function createWSHandler(
                 break;
             }
 
+            // ── Dispatch ────────────────────────
+
+            case 'dispatch:run': {
+                const agentName = msg.agent || '';
+                const message = msg.message || '';
+                if (!agentName || !message) {
+                    send(ws, { event: 'error', error: 'dispatch:run requires agent and message' });
+                    return;
+                }
+                try {
+                    const result = await dispatch(agentName, message, {
+                        silent: msg.silent,
+                        timeout: msg.timeout,
+                        source: 'ui',
+                    });
+                    send(ws, { event: 'dispatch:result', agent: agentName, result });
+                } catch (err: any) {
+                    send(ws, { event: 'dispatch:error', agent: agentName, error: err.message });
+                }
+                break;
+            }
+
+            // ── Triggers ───────────────────────
+
+            case 'trigger:list': {
+                const triggers = triggerManager.list().map(t => ({
+                    name: t.name || t.constructor.name,
+                    watch: t.watch,
+                    cooldown: t.cooldown,
+                    enabled: t.enabled,
+                }));
+                send(ws, { event: 'trigger:list', triggers });
+                break;
+            }
+
+            case 'trigger:enable': {
+                if (msg.name) triggerManager.enable(msg.name);
+                break;
+            }
+
+            case 'trigger:disable': {
+                if (msg.name) triggerManager.disable(msg.name);
+                break;
+            }
+
+            // ── Pipelines ─────────────────────
+
+            case 'pipeline:list': {
+                const pipes = pipelineManager.list().map(p => ({
+                    name: p.name || p.constructor.name,
+                    steps: p.steps.map((s: any) => typeof s === 'string' ? s : s.agent),
+                }));
+                send(ws, { event: 'pipeline:list', pipelines: pipes });
+                break;
+            }
+
+            case 'pipeline:run': {
+                const { pipeline: pName, input, silent } = msg;
+                if (!pName || !input) {
+                    send(ws, { event: 'error', error: 'pipeline:run requires { pipeline, input }' });
+                    break;
+                }
+                // Run async
+                pipelineManager.run(pName, input, { silent, source: 'ui' }).then(result => {
+                    send(ws, { event: 'pipeline:result', pipeline: pName, result });
+                }).catch(err => {
+                    send(ws, { event: 'pipeline:error', pipeline: pName, error: err.message });
+                });
+                break;
+            }
+
             default:
                 send(ws, { event: 'error', error: `Unknown action: ${msg.action}` });
         }
     }
+
+
 
     // ── Helpers ──────────────────────────────────────
 
@@ -843,6 +1037,9 @@ export function createWSHandler(
     return {
         broadcast,
         clients,
+        dispatch,
+        triggerManager,
+        pipelineManager,
         close() {
             for (const ws of clients) ws.close();
             wss.close();

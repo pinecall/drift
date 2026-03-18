@@ -68,6 +68,13 @@ console.log(result.cost);   // 0.003241
   - [Custom Windows](#custom-windows)
   - [Serialization & Persistence](#serialization--persistence)
   - [Disabling (Token Saving)](#disabling-token-saving)
+- [Coordination](#coordination)
+  - [Dispatch](#dispatch)
+  - [Trigger](#trigger)
+  - [Pipeline](#pipeline)
+  - [Agent Subscribes (Blackboard)](#agent-subscribes-blackboard)
+  - [canDispatch (Agent-to-Agent)](#candispatch-agent-to-agent)
+  - [Configuration](#configuration-1)
 - [Drift Server](#drift-server)
   - [drift.config.json](#driftconfigjson)
   - [CLI](#cli)
@@ -1636,6 +1643,252 @@ function Dashboard() {
 | — (on connect) | `workspace:changed` | Full state sync |
 
 Workspace state is **automatically persisted** to SQLite (`workspace_state` table) with debounced writes (max 1x/100ms). Restored on server restart.
+
+---
+
+## Coordination
+
+Inter-agent communication and reactive automation. Two primitives:
+
+| Primitive | What it does | Who uses it |
+|-----------|-------------|-------------|
+| **Dispatch** | Invoke an agent programmatically | Agents, triggers, UI |
+| **Trigger** | React to Window/Workspace changes, auto-dispatch | Auto-discovered from `triggersDir/` |
+
+> 📖 **Deep reference**: [`docs/coordination.md`](./docs/coordination.md)
+
+### Dispatch
+
+The core coordination primitive — `dispatch(agentName, message, options?)` creates an internal Session, runs the agent, and returns the result:
+
+```typescript
+// From a trigger
+await this.dispatch('reviewer', 'Review task "Auth flow" for quality');
+
+// From the WS handler (UI)
+{ action: 'dispatch:run', agent: 'reviewer', message: 'Review all tasks' }
+```
+
+**Type signature:**
+
+```typescript
+type DispatchFn = (
+    agentName: string,
+    message: string,
+    options?: {
+        sessionId?: string;   // default: __dispatch__:agent:timestamp
+        silent?: boolean;     // don't broadcast to UI (default: false)
+        timeout?: number;     // max ms
+        source?: string;      // 'trigger:auto-review', 'agent:Planner', 'ui'
+    }
+) => Promise<DispatchResult>;
+
+interface DispatchResult {
+    text: string;          // Agent's response
+    cost: number;          // API cost
+    toolCalls: { name: string; params: any }[];
+    sessionId: string;
+    aborted: boolean;
+}
+```
+
+**WebSocket events:**
+
+| Event | Broadcast? | Payload |
+|-------|-----------|--------|
+| `dispatch:started` | ✅ | `{ agent, sessionId, source }` |
+| `dispatch:done` | ✅ | `{ agent, sessionId, result }` |
+| `dispatch:error` | ✅ | `{ agent, sessionId, error }` |
+| `dispatch:result` | Sender only | `{ agent, result: DispatchResult }` |
+
+### Trigger
+
+Class-based reactive rules that auto-fire agents on state changes. Two modes:
+
+**Override mode** — `condition()` + `run()`:
+
+```typescript
+import { Trigger } from 'drift';
+
+class StaleAlert extends Trigger {
+    watch = 'window' as const;
+    cooldown = 60_000;
+
+    condition(event: any) {
+        return event.action === 'update' && event.item?.status === 'todo';
+    }
+
+    async run(event: any) {
+        await this.dispatch('planner', `Task "${event.item.title}" is stale. Re-prioritize.`);
+    }
+}
+```
+
+**StateMachine mode** — `field` + `on` (declarative, no overrides needed):
+
+```typescript
+class TaskLifecycle extends Trigger {
+    watch = 'window' as const;
+    cooldown = 15_000;
+    field = 'status';
+
+    on = {
+        'done': async (e: any) => {
+            await this.dispatch('reviewer', `Review "${e.item.title}"`);
+        },
+        'blocked': async (e: any) => {
+            await this.dispatch('planner', `Task blocked: "${e.item.title}"`);
+        },
+    };
+}
+```
+
+**Base class properties:**
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `watch` | `'window' \| 'workspace'` | `'window'` | Event source to listen to |
+| `cooldown` | `number` | `0` | Min ms between firings |
+| `enabled` | `boolean` | `true` | Active toggle |
+| `field` | `string?` | — | StateMachine: field to track in `event.patch` |
+| `on` | `Record<string, handler>` | — | StateMachine: handlers per field value |
+
+**Protected API (in subclasses):**
+
+| Method | Description |
+|--------|-------------|
+| `this.dispatch(agent, message, opts?)` | Dispatch an agent |
+| `this.select(key)` | Read a workspace slice |
+| `this.workspace` | Shared workspace reference |
+| `this.window` | First shared window reference |
+
+### Pipeline
+
+Sequential agent chains — output of step N becomes input of step N+1. Auto-discovered from `pipelinesDir/`.
+
+**Simple (string array):**
+
+```typescript
+import { Pipeline } from 'drift';
+
+class ReviewPipeline extends Pipeline {
+    steps = ['planner', 'task-agent', 'reviewer'];
+}
+// Step 0: dispatch('planner', originalInput)
+// Step 1: dispatch('task-agent', step0.text)
+// Step 2: dispatch('reviewer', step1.text)
+```
+
+**Full control (PipelineStep objects):**
+
+```typescript
+class TradingPipeline extends Pipeline {
+    steps = [
+        { agent: 'scanner',  message: (ctx) => `Scan: ${ctx.input}` },
+        { agent: 'analyzer', message: (ctx) => `Analyze:\n${ctx.prev.text}` },
+        { agent: 'executor', message: (ctx) => `Execute:\n${ctx.prev.text}`,
+                             condition: (ctx) => !ctx.prev.text.includes('REJECT') },
+    ];
+}
+```
+
+**Hooks** — `beforeStep()`, `afterStep()`, `onError()`:
+
+```typescript
+class SafePipeline extends Pipeline {
+    steps = ['scanner', 'analyzer', 'executor'];
+
+    afterStep(step: number, ctx: PipelineContext): void {
+        this.workspace?.setSlice('progress', `Step ${step + 1} done`);
+    }
+
+    onError(step: number, error: Error): 'abort' | 'skip' | 'retry' {
+        return step < 2 ? 'abort' : 'skip';  // critical steps abort, others skip
+    }
+}
+```
+
+**PipelineContext** (available in `message()`, `condition()`, hooks):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `input` | `string` | Original pipeline input |
+| `prev` | `DispatchResult` | Previous step's result |
+| `results` | `DispatchResult[]` | All completed step results |
+| `step` | `number` | Current step index (0-based) |
+| `stepName` | `string` | Current agent name |
+
+**WebSocket:**
+
+| Action/Event | Direction | Payload |
+|-------------|-----------|---------|
+| `pipeline:run` | Client → Server | `{ pipeline, input, silent? }` |
+| `pipeline:list` | Client → Server | — |
+| `pipeline:started` | Server → All | `{ pipeline, steps[] }` |
+| `pipeline:step` | Server → All | `{ pipeline, step, agent, status }` |
+| `pipeline:done` | Server → All | `{ pipeline, result }` |
+| `pipeline:result` | Server → Sender | `{ pipeline, result: PipelineResult }` |
+
+### Agent Subscribes (Blackboard)
+
+Declare `subscribes` on an Agent to auto-dispatch it when workspace slices change. Internally generates Trigger instances — no separate files needed.
+
+```typescript
+class MarketAgent extends Agent {
+    model = 'haiku';
+    subscribes = ['prices', 'signals'];  // auto-dispatch on change
+    subscribeCooldown = 10_000;           // default: 5000ms
+}
+```
+
+**Custom handler** — return message or `null` to skip:
+
+```typescript
+class ExecutorAgent extends Agent {
+    subscribes = [{ slice: 'signals', cooldown: 0 }];  // per-slice config
+
+    onSliceChange(slice: string, value: any): string | null {
+        if (value?.action === 'BUY') return `Execute BUY: ${JSON.stringify(value)}`;
+        return null;  // skip
+    }
+}
+```
+
+**Properties:**
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `subscribes` | `(string \| { slice, cooldown? })[]` | — | Workspace slices to watch |
+| `subscribeCooldown` | `number` | `5000` | Default cooldown (ms) |
+| `onSliceChange()` | `(slice, value, event) => string \| null` | — | Custom message builder |
+
+### canDispatch (Agent-to-Agent)
+
+Set `canDispatch = true` on an agent — it automatically gets a `dispatch_agent` tool:
+
+```typescript
+class PlannerAgent extends Agent {
+    model = 'sonnet';
+    canDispatch = true;
+
+    prompt = `You coordinate work between agents.
+Available agents: task-agent, reviewer.
+Use dispatch_agent to delegate tasks.`;
+}
+```
+
+The agent can then call `dispatch_agent({ agent: 'reviewer', message: '...' })` like any other tool. Dispatch is blocking — the agent waits for the dispatched agent to finish.
+
+### Configuration
+
+```json
+// drift.config.json
+{
+    "triggersDir": "./triggers"
+}
+```
+
+Default: `"./triggers"`. Triggers are auto-discovered from this directory (same pattern as `agentsDir`). If the directory doesn't exist, no triggers are loaded.
 
 ---
 

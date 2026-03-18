@@ -14,6 +14,7 @@ import { TaskBoardWindow, type TaskItem } from '../windows/task-window.tsx';
 
 export class PlannerAgent extends Agent {
     model = 'haiku';
+    canDispatch = true;
     thinking = false;
     effort = 'low' as const;
     maxIterations = 15;
