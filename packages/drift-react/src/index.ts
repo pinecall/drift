@@ -14,6 +14,7 @@ export { useChat, type UseChatReturn, type NudgeOptions } from './use-chat.ts';
 export { useThread, type UseThreadReturn, type ThreadOptions } from './use-thread.ts';
 export { useDrift, type UseDriftReturn } from './use-drift.ts';
 export { useSessions, type UseSessionsReturn, type SessionInfo } from './use-sessions.ts';
+export { useStreamBuffer, type StreamBufferOptions } from './use-stream-buffer.ts';
 
 // Types
 export type {

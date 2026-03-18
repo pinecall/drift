@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { User, Send, Square, Trash2, Loader2, CheckCircle2, Brain, ChevronDown, ChevronRight, Zap, ClipboardList, Search, Bot } from 'lucide-react'
-import { useChat, type ChatMessage, type MessagePart } from 'drift/react'
+import { useChat, useStreamBuffer, type ChatMessage, type MessagePart } from 'drift/react'
 import { T, getAgentStyle, AGENT_COLORS } from '../lib/theme'
 import { StreamingMarkdown } from './StreamingMarkdown'
 
@@ -153,7 +153,8 @@ export function Chat({ sessionId }: { sessionId: string }) {
     const [selectedAgent, setSelectedAgent] = useState('task-agent')
     // Each agent gets its own session so the server creates separate Session objects
     const agentSessionId = `${sessionId}:${selectedAgent}`
-    const { messages, send, abort, clear, isStreaming, lastError, activeAgent } = useChat(selectedAgent, { sessionId: agentSessionId })
+    const { messages: rawMessages, send, abort, clear, isStreaming, lastError, activeAgent } = useChat(selectedAgent, { sessionId: agentSessionId })
+    const messages = useStreamBuffer(rawMessages, { charsPerFrame: 3 })
     const [input, setInput] = useState('')
     const bottomRef = useRef<HTMLDivElement>(null)
     const scrollRef = useRef<HTMLDivElement>(null)
