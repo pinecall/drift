@@ -234,14 +234,9 @@ export class Agent extends EventEmitter {
         this._registry = new ToolRegistry();
         this._registry.setFilters(this.allowedTools, this.disabledTools);
 
-        // Register built-in tools (selective)
-        if (this.builtinTools.length > 0) {
-            if (this.builtinTools.includes('all')) {
-                registerBuiltinTools(this._registry);
-            } else {
-                registerSelectedTools(this._registry, this.builtinTools);
-            }
-        }
+        // NOTE: Built-in tool registration moved to _ensureDecorators()
+        // because subclass field initializers (e.g. builtinTools = ['board'])
+        // run AFTER super() returns — so this.builtinTools is [] here.
 
         // NOTE: @tool decorated methods are collected lazily via _ensureDecorators()
         // because TC39 addInitializer runs AFTER super() returns.
@@ -426,6 +421,16 @@ export class Agent extends EventEmitter {
     private _ensureDecorators(): void {
         if (this._decoratorsCollected) return;
         this._decoratorsCollected = true;
+
+        // Register built-in tools (deferred from constructor for class field init order)
+        if (this.builtinTools.length > 0) {
+            if (this.builtinTools.includes('all')) {
+                registerBuiltinTools(this._registry);
+            } else {
+                registerSelectedTools(this._registry, this.builtinTools);
+            }
+        }
+
         this._registry.registerDecoratedTools(this);
 
         // Auto-register dispatch_agent tool when canDispatch is enabled
