@@ -8,7 +8,7 @@
  *   - Workspace stats are updated on every action (shared across agents)
  */
 
-import { Agent, tool } from '../../../../packages/drift/src/index.ts';
+import { Agent, tool } from '@drift/core';
 import { TaskBoardWindow, type TaskItem } from '../windows/task-window.tsx';
 
 export class TaskAgent extends Agent {

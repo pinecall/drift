@@ -16,6 +16,7 @@ import { DeveloperAgent } from '../agents/developer.ts';
 import { DeveloperLiteAgent } from '../agents/developer-lite.ts';
 import { ResearcherAgent } from '../agents/researcher.ts';
 import { PlaywrightAgent } from '../agents/playwright.ts';
+import { ManagerAgent } from '../agents/manager.ts';
 import { CodebaseWindow } from '../windows/codebase-window.tsx';
 
 // ── Types ───────────────────────────────────────────
@@ -41,6 +42,7 @@ const BUILTIN_AGENTS: Record<string, new () => Agent> = {
     'developer-lite': DeveloperLiteAgent,
     'researcher': ResearcherAgent,
     'playwright': PlaywrightAgent,
+    'manager': ManagerAgent,
 };
 
 // ── Config Loading ──────────────────────────────────

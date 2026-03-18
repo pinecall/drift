@@ -34,11 +34,12 @@ export const tests: Record<string, () => void | Promise<void>> = {
         fs.rmSync(tmpDir, { recursive: true });
     },
 
-    'listBuiltinAgents returns all 4'() {
+    'listBuiltinAgents returns all 5'() {
         const names = listBuiltinAgents();
-        if (names.length !== 4) throw new Error(`expected 4, got ${names.length}`);
+        if (names.length !== 5) throw new Error(`expected 5, got ${names.length}`);
         if (!names.includes('developer')) throw new Error('missing developer');
         if (!names.includes('researcher')) throw new Error('missing researcher');
+        if (!names.includes('manager')) throw new Error('missing manager');
     },
 
     async 'loadAgents loads built-in agents from include'() {

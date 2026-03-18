@@ -29,6 +29,14 @@ import shellRead from './shell/shell-read.ts';
 import shellWrite from './shell/shell-write.ts';
 import shellStop from './shell/shell-stop.ts';
 
+// Board tools (TaskBoard / Kanban)
+import boardView from './board/board-view.ts';
+import boardReadCard from './board/board-read-card.ts';
+import boardCreateCard from './board/board-create-card.ts';
+import boardMoveCard from './board/board-move-card.ts';
+import boardAddComment from './board/board-add-comment.ts';
+import boardUpdateCard from './board/board-update-card.ts';
+
 // ── Categories ──────────────────────────────────────
 
 const EDIT_TOOLS = [replace, insertAfter, insertBefore];
@@ -40,13 +48,16 @@ const FILESYSTEM_TOOLS = [
 
 const SHELL_TOOLS = [shellExecute, shellStart, shellRead, shellWrite, shellStop];
 
-const ALL_TOOLS = [...EDIT_TOOLS, ...FILESYSTEM_TOOLS, ...SHELL_TOOLS];
+const BOARD_TOOLS = [boardView, boardReadCard, boardCreateCard, boardMoveCard, boardAddComment, boardUpdateCard];
+
+const ALL_TOOLS = [...EDIT_TOOLS, ...FILESYSTEM_TOOLS, ...SHELL_TOOLS, ...BOARD_TOOLS];
 
 /** Category → tools mapping */
 const CATEGORIES: Record<string, any[]> = {
     edit: EDIT_TOOLS,
     filesystem: FILESYSTEM_TOOLS,
     shell: SHELL_TOOLS,
+    board: BOARD_TOOLS,
     all: ALL_TOOLS,
 };
 
@@ -59,7 +70,7 @@ const CATEGORY_NAMES = new Set(Object.keys(CATEGORIES));
 // ── Registration ────────────────────────────────────
 
 /**
- * Register all 16 built-in tools with a registry.
+ * Register all built-in tools with a registry.
  */
 export function registerBuiltinTools(registry: ToolRegistry): number {
     let count = 0;
@@ -73,14 +84,13 @@ export function registerBuiltinTools(registry: ToolRegistry): number {
  * Register a subset of built-in tools by name or category.
  * 
  * Accepts:
- *   - Category names: 'edit', 'filesystem', 'shell', 'all'
- *   - Individual tool names: 'replace', 'grep_search', 'shell_execute', etc.
+ *   - Category names: 'edit', 'filesystem', 'shell', 'board', 'all'
+ *   - Individual tool names: 'replace', 'grep_search', 'board_view', etc.
  * 
  * Example:
  *   registerSelectedTools(registry, ['edit', 'filesystem'])     // 11 tools
- *   registerSelectedTools(registry, ['shell'])                  // 5 tools
- *   registerSelectedTools(registry, ['grep_search', 'list_dir'])// 2 tools
- *   registerSelectedTools(registry, ['edit', 'shell_execute'])  // 4 tools (mix)
+ *   registerSelectedTools(registry, ['board'])                  // 6 tools
+ *   registerSelectedTools(registry, ['edit', 'board'])          // 9 tools (mix)
  */
 export function registerSelectedTools(registry: ToolRegistry, selection: string[]): number {
     const toolsToRegister = new Set<any>();
@@ -107,4 +117,5 @@ export function registerSelectedTools(registry: ToolRegistry, selection: string[
     return count;
 }
 
-export { ALL_TOOLS, EDIT_TOOLS, FILESYSTEM_TOOLS, SHELL_TOOLS, CATEGORIES, TOOL_NAMES, CATEGORY_NAMES };
+export { ALL_TOOLS, EDIT_TOOLS, FILESYSTEM_TOOLS, SHELL_TOOLS, BOARD_TOOLS, CATEGORIES, TOOL_NAMES, CATEGORY_NAMES };
+

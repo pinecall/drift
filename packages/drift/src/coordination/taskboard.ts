@@ -5,6 +5,8 @@
  *   - Columns: TODO → IN_PROGRESS → IN_REVIEW → QA → DONE
  *   - Card assignment → auto-dispatch agents
  *   - Dependencies: cards block until deps are DONE
+ *   - Per-card CodebaseWindow (isolated file workspace)
+ *   - Window inheritance: deps' files auto-load into dependent cards
  *   - Human review gates
  *   - Per-card context accumulation
  *   - Auto-advance on completion
@@ -16,6 +18,7 @@
  */
 
 import { Window } from '../state/window.ts';
+import { CodebaseWindow } from '../windows/codebase-window.tsx';
 import type { DispatchFn } from './trigger.ts';
 
 // ── Types ───────────────────────────────────────────
@@ -37,6 +40,8 @@ export interface Card {
     createdAt: number;
     updatedAt: number;
     result?: string;
+    /** Per-card CodebaseWindow — isolated file workspace for this card's agent */
+    window?: CodebaseWindow;
 }
 
 export interface BoardState {
@@ -332,9 +337,14 @@ export class TaskBoard extends Window<Card, BoardState> {
 
     /** When a card moves to DONE, unblock and potentially dispatch dependent cards. */
     private _unblockDependents(doneCardId: string): void {
+        const doneCard = this.get(doneCardId);
+
         for (const card of this.list()) {
             if (!card.dependsOn?.includes(doneCardId)) continue;
             if (this.isBlocked(card.id)) continue;  // still has other blockers
+
+            // Window inheritance: copy done deps' files into this card's window
+            this._inheritWindows(card);
 
             // This card just became unblocked
             this.emit('card:unblocked', { card });
@@ -342,6 +352,31 @@ export class TaskBoard extends Window<Card, BoardState> {
             // If it's in TODO and has an assignee, auto-dispatch
             if (card.column === 'todo' && card.assignee && this._state.autoAssign) {
                 this.emit('card:assigned', { card, agent: card.assignee });
+            }
+        }
+    }
+
+    /**
+     * Inherit window files from all done dependencies into a card's window.
+     * If the card doesn't have a window yet, creates one using the first dep's cwd.
+     */
+    private _inheritWindows(card: Card): void {
+        if (!card.dependsOn?.length) return;
+
+        for (const depId of card.dependsOn) {
+            const dep = this.get(depId);
+            if (!dep?.window || !this._isDone(dep.column)) continue;
+
+            // Create card window if not exists, using dep's cwd
+            if (!card.window) {
+                card.window = new CodebaseWindow({ cwd: dep.window.cwd });
+            }
+
+            // Copy all files from dependency's window
+            for (const file of dep.window.list()) {
+                if (!card.window.has(file.id)) {
+                    card.window.open(file.fullPath);
+                }
             }
         }
     }

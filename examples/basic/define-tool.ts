@@ -7,7 +7,7 @@
  * Run: node --import tsx examples/06-define-tool.ts
  */
 
-import { Agent, defineTool } from '../../packages/drift/src/index.ts';
+import { Agent, defineTool } from '@drift/core';
 
 class TodoAgent extends Agent {
     model = 'haiku';
@@ -15,6 +15,10 @@ class TodoAgent extends Agent {
     thinking = false;
 
     private todos: string[] = [];
+
+    onToolExecute(name: string) {
+        console.log(`🔧 ${name}`);
+    }
 
     async addTodo({ task }: { task: string }) {
         this.todos.push(task);
@@ -39,8 +43,6 @@ defineTool(TodoAgent, 'listTodos', 'List all current todos', {});
 
 // Use the agent
 const agent = new TodoAgent();
-
-agent.on('tool:execute', ({ name }: any) => console.log(`🔧 ${name}`));
 
 try {
     const result = await agent.run('Add "Buy groceries" and "Walk the dog" to my list, then show all todos.');

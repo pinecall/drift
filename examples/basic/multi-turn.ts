@@ -7,7 +7,7 @@
  * Run: node --import tsx examples/07-multi-turn.ts
  */
 
-import { Agent, tool } from '../../packages/drift/src/index.ts';
+import { Agent, tool } from '@drift/core';
 
 class NotesAgent extends Agent {
     model = 'haiku';
@@ -16,6 +16,10 @@ class NotesAgent extends Agent {
     maxIterations = 3;
 
     private notes: Map<string, string> = new Map();
+
+    onToolExecute(name: string, params: Record<string, any>) {
+        console.log(`    🔧 ${name}(${JSON.stringify(params)})`);
+    }
 
     @tool('Save a note with a title', {
         title: { type: 'string', description: 'Note title' },
@@ -46,10 +50,6 @@ class NotesAgent extends Agent {
 // ── Multi-turn conversation ──
 
 const agent = new NotesAgent();
-
-agent.on('tool:execute', ({ name, params }: any) => {
-    console.log(`    🔧 ${name}(${JSON.stringify(params)})`);
-});
 
 async function chat(message: string) {
     console.log(`\n👤 ${message}`);

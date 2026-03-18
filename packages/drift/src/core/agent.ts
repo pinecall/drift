@@ -385,6 +385,38 @@ export class Agent extends EventEmitter {
     get cost(): number { return this._pricing.totalCost(); }
     get cwd(): string { return this._cwd; }
 
+    // ── Lifecycle Hooks (override in subclass) ──────────
+
+    /** Called when a text block starts streaming. */
+    onTextStart(): void {}
+
+    /** Called for each text token. Override to handle streaming text. */
+    onText(chunk: string): void {}
+
+    /** Called when a thinking block starts. */
+    onThinkingStart(): void {}
+
+    /** Called for each thinking token. */
+    onThinking(text: string): void {}
+
+    /** Called when a tool stream block starts. */
+    onToolStart(toolId: string, name: string): void {}
+
+    /** Called before a tool executes. */
+    onToolExecute(name: string, params: Record<string, any>): void {}
+
+    /** Called after a tool finishes. */
+    onToolResult(name: string, result: any, ms: number): void {}
+
+    /** Called when the full API response is received. */
+    onResponseEnd(): void {}
+
+    /** Called after each iteration with cost info. */
+    onCost(turnCost: number, totalCost: number, turns: number): void {}
+
+    /** Called on error. */
+    onError(message: string, status?: number): void {}
+
     // ── Lazy Decorator Collection ────────────────────────
 
     /**
@@ -492,6 +524,7 @@ export class Agent extends EventEmitter {
 
             const result = await this._processStream(stream);
             this.emit('response:end', {});
+            this.onResponseEnd();
 
             // Record cost
             if (result.usage) {
@@ -503,6 +536,7 @@ export class Agent extends EventEmitter {
                     turns: this._pricing.turns.length,
                     usage: result.usage,
                 });
+                this.onCost(turn.cost, state.totalCost, this._pricing.turns.length);
             }
 
             // Build assistant content
@@ -539,6 +573,7 @@ export class Agent extends EventEmitter {
             }
             state.lastError = err.message;
             this.emit('error', { message: err.message, status: err.status, recoverable: false });
+            this.onError(err.message, err.status);
             return 'fatal';
         }
     }
@@ -563,11 +598,14 @@ export class Agent extends EventEmitter {
                     const block = event.content_block;
                     if (block.type === 'thinking') {
                         this.emit('thinking:start', {});
+                        this.onThinkingStart();
                     } else if (block.type === 'text') {
                         this.emit('text:start', {});
+                        this.onTextStart();
                     } else if (block.type === 'tool_use') {
                         currentToolCall = { id: block.id, name: block.name, inputJson: '' };
                         this.emit('tool:start_stream', { toolId: block.id, name: block.name });
+                        this.onToolStart(block.id, block.name);
                     }
                     break;
                 }
@@ -576,9 +614,11 @@ export class Agent extends EventEmitter {
                     const delta = event.delta;
                     if (delta.type === 'thinking_delta') {
                         this.emit('thinking:delta', { text: delta.thinking });
+                        this.onThinking(delta.thinking);
                     } else if (delta.type === 'text_delta') {
                         result.text += delta.text;
                         this.emit('text:delta', { chunk: delta.text });
+                        this.onText(delta.text);
                     } else if (delta.type === 'input_json_delta' && currentToolCall) {
                         currentToolCall.inputJson += delta.partial_json;
                     }
@@ -635,15 +675,17 @@ export class Agent extends EventEmitter {
 
             const params = JSON.parse(toolCall.inputJson || '{}');
             this.emit('tool:execute', { name: toolCall.name, params });
+            this.onToolExecute(toolCall.name, params);
 
             const start = Date.now();
-            const ctx: ToolContext = { cwd: this._cwd, window: this.window, workspace: this.workspace, dispatch: this._dispatchFn };
+            const ctx: ToolContext = { cwd: this._cwd, window: this.window, workspace: this.workspace, dispatch: this._dispatchFn, taskboard: this.taskboard };
 
             try {
                 const result = await this._registry.execute(toolCall.name, params, ctx);
                 const ms = Date.now() - start;
 
                 this.emit('tool:result', { name: toolCall.name, result, ms });
+                this.onToolResult(toolCall.name, result, ms);
 
                 // Add tool result to conversation
                 const resultText = typeof result === 'string'
@@ -654,6 +696,7 @@ export class Agent extends EventEmitter {
             } catch (err: any) {
                 const ms = Date.now() - start;
                 this.emit('tool:result', { name: toolCall.name, result: { success: false, result: err.message }, ms });
+                this.onToolResult(toolCall.name, { success: false, result: err.message }, ms);
                 conversation.addToolResult(toolCall.id, toolCall.name, `Error: ${err.message}`, true);
             }
         }
@@ -675,7 +718,15 @@ export class Agent extends EventEmitter {
             }
         }
 
-        // Block 3: Window content (if available)
+        // Block 3: TaskBoard state (Kanban board)
+        if (this.taskboard) {
+            const boardContent = this.taskboard.render();
+            if (boardContent) {
+                entries.push({ type: 'text', text: boardContent });
+            }
+        }
+
+        // Block 4: Window content (if available)
         if (this.window) {
             const windowContent = this.window.render();
             if (windowContent) {

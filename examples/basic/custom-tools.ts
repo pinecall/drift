@@ -8,7 +8,7 @@
  * Run: node --import tsx examples/02-custom-tools.ts
  */
 
-import { Agent, tool } from '../../packages/drift/src/index.ts';
+import { Agent, tool } from '@drift/core';
 
 // ── Base agent with shared tools ──
 
@@ -44,6 +44,18 @@ When asked to deploy, always check health first, then deploy, then verify health
 Be concise in your responses.`;
 
     private deployHistory: Array<{ service: string; version: string; ts: number }> = [];
+
+    // ── Lifecycle hooks ──
+
+    onToolExecute(name: string, params: Record<string, any>) {
+        console.log(`\n  🔧 ${name}(${JSON.stringify(params)})`);
+    }
+
+    onToolResult(name: string, result: any, ms: number) {
+        console.log(`     → ${result.result} [${ms}ms]`);
+    }
+
+    // ── Tools ──
 
     @tool('List recent deployments', {
         service: { type: 'string', description: 'Filter by service name (optional)' },
@@ -103,14 +115,6 @@ Be concise in your responses.`;
 // ── Run it ──
 
 const agent = new DeployAgent();
-
-// Track all tool calls
-agent.on('tool:execute', ({ name, params }: any) => {
-    console.log(`\n  🔧 ${name}(${JSON.stringify(params)})`);
-});
-agent.on('tool:result', ({ name, result, ms }: any) => {
-    console.log(`     → ${result.result} [${ms}ms]`);
-});
 
 console.log('🚀 Deploy Agent — Decorator Showcase\n');
 console.log('Available tools:', agent.tools.list().filter(t =>

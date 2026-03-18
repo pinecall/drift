@@ -10,7 +10,7 @@
  * Run: node --import tsx examples/04-builtin-tools.ts
  */
 
-import { Agent } from '../../packages/drift/src/index.ts';
+import { Agent } from '@drift/core';
 
 class CodeReviewAgent extends Agent {
     model = 'haiku';
@@ -20,14 +20,13 @@ class CodeReviewAgent extends Agent {
     // Prompt auto-loads from examples/prompts/code-review.txt
     // Only allow safe read-only tools
     allowedTools = ['list_dir', 'grep_search', 'open_files'];
+
+    onToolExecute(name: string, params: Record<string, any>) {
+        console.log(`🔧 ${name}(${JSON.stringify(params).slice(0, 80)}...)`);
+    }
 }
 
 const agent = new CodeReviewAgent({ cwd: process.cwd() });
-
-// Track tool usage
-agent.on('tool:execute', ({ name, params }: any) => {
-    console.log(`🔧 ${name}(${JSON.stringify(params).slice(0, 80)}...)`);
-});
 
 const result = await agent.run('List the files in the current directory and tell me what this project is about.');
 

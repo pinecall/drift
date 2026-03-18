@@ -14,17 +14,19 @@ const EXPECTED_TOOLS = [
     'create_file', 'delete_file', 'open_files', 'close_files',
     'find_by_name', 'grep_search', 'list_dir', 'project_tree',
     'shell_execute', 'shell_start', 'shell_read', 'shell_write', 'shell_stop',
+    'board_view', 'board_read_card', 'board_create_card',
+    'board_move_card', 'board_add_comment', 'board_update_card',
 ];
 
 export const tests = {
-    'ALL_TOOLS has all 16 tools'(assert: any) {
-        assert.equal(ALL_TOOLS.length, 16, `expected 16, got ${ALL_TOOLS.length}`);
+    'ALL_TOOLS has all 22 tools'(assert: any) {
+        assert.equal(ALL_TOOLS.length, 22, `expected 22, got ${ALL_TOOLS.length}`);
     },
 
     'registerBuiltinTools registers all'(assert: any) {
         const reg = new ToolRegistry();
         const count = registerBuiltinTools(reg);
-        assert.equal(count, 16, `expected 16 registered, got ${count}`);
+        assert.equal(count, 22, `expected 22 registered, got ${count}`);
     },
 
     'all expected tool names exist'(assert: any) {
@@ -50,7 +52,7 @@ export const tests = {
         registerBuiltinTools(reg);
         const schemas = reg.getSchemas();
 
-        assert.equal(schemas.length, 16);
+        assert.equal(schemas.length, 22);
         for (const schema of schemas) {
             assert.ok(schema.name, 'schema has name');
             assert.ok(schema.description, `${schema.name} has description`);

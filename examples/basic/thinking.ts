@@ -7,13 +7,21 @@
  * Run: node --import tsx examples/05-thinking.ts
  */
 
-import { Agent, tool } from '../../packages/drift/src/index.ts';
+import { Agent, tool } from '@drift/core';
 
 class MathAgent extends Agent {
     model = 'haiku';
     thinking = true;       // Enable extended thinking
     effort = 'medium' as const;
     maxIterations = 1;
+
+    onThinking(text: string) {
+        process.stdout.write(`💭 ${text}\n`);
+    }
+
+    onText(chunk: string) {
+        process.stdout.write(chunk);
+    }
 
     @tool('Calculate a mathematical expression', {
         expression: { type: 'string', description: 'Math expression to evaluate' },
@@ -30,15 +38,6 @@ class MathAgent extends Agent {
 }
 
 const agent = new MathAgent();
-
-// Watch thinking events
-agent.on('thinking:delta', ({ text }: any) => {
-    process.stdout.write(`💭 ${text}\n`);
-});
-
-agent.on('text:delta', ({ chunk }: any) => {
-    process.stdout.write(chunk);
-});
 
 console.log('🧮 Asking a math question with thinking enabled...\n');
 

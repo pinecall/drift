@@ -20,7 +20,7 @@ export { Provider } from './provider/provider.ts';
 export { DriftServer } from './server/index.ts';
 
 // JSX runtime for window rendering
-export { render, Fragment } from './jsx-runtime.ts';
+export { jsx, render, Fragment } from './jsx-runtime.ts';
 
 // Storage (pluggable persistence)
 export { SQLiteStorage } from './storage/sqlite-storage.ts';
@@ -38,6 +38,7 @@ export { DeveloperAgent } from './agents/developer.ts';
 export { DeveloperLiteAgent } from './agents/developer-lite.ts';
 export { PlaywrightAgent } from './agents/playwright.ts';
 export { ResearcherAgent } from './agents/researcher.ts';
+export { ManagerAgent } from './agents/manager.ts';
 
 export { resolvePrompt, classNameToKebab } from './core/prompt.ts';
 export {
@@ -48,7 +49,7 @@ export {
 
 // Built-in tool utilities
 export {
-    ALL_TOOLS, EDIT_TOOLS, FILESYSTEM_TOOLS, SHELL_TOOLS,
+    ALL_TOOLS, EDIT_TOOLS, FILESYSTEM_TOOLS, SHELL_TOOLS, BOARD_TOOLS,
     CATEGORIES, TOOL_NAMES, CATEGORY_NAMES,
     registerBuiltinTools, registerSelectedTools,
 } from './tools/index.ts';

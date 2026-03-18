@@ -5,7 +5,7 @@
  * Each step receives the previous step's output as context.
  */
 
-import { Pipeline } from '../../../../packages/drift/src/index.ts';
+import { Pipeline } from '@drift/core';
 
 export class SprintPlanningPipeline extends Pipeline {
     steps = [

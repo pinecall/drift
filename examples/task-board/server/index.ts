@@ -13,8 +13,8 @@
  *   → http://localhost:3200
  */
 
-import { DriftServer } from '../../../packages/drift/src/server/index.ts';
-import { Workspace } from '../../../packages/drift/src/core/workspace.ts';
+import { DriftServer } from '@drift/core';
+import { Workspace } from '@drift/core';
 
 // ── Shared Workspace: Board Stats ──
 // Tracks metrics across all agents, visible in the UI dashboard

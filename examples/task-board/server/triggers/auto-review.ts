@@ -7,7 +7,7 @@
  * StateMachine style — uses `field` + `on` for clean declarative syntax.
  */
 
-import { Trigger } from '../../../../packages/drift/src/index.ts';
+import { Trigger } from '@drift/core';
 
 export class AutoReviewTrigger extends Trigger {
     watch = 'window' as const;

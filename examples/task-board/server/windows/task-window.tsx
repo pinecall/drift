@@ -9,8 +9,8 @@
  * The agent sees the full board + all recent activity via render().
  */
 
-import { Window, type WindowItem } from '../../../../packages/drift/src/core/window.ts';
-import { jsx, Fragment, render } from '../../../../packages/drift/src/jsx-runtime.ts';
+import { Window, type WindowItem } from '@drift/core';
+import { jsx, Fragment, render } from '@drift/core';
 
 // ── Types ──
 

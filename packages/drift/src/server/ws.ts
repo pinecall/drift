@@ -26,7 +26,7 @@ import { Session } from '../core/session.ts';
 import type { Window } from '../state/window.ts';
 import type { Workspace } from '../state/workspace.ts';
 import type { TaskBoard, Card } from '../coordination/taskboard.ts';
-import type { CodebaseWindow } from '../windows/codebase-window.tsx';
+import { CodebaseWindow } from '../windows/codebase-window.tsx';
 import type { LoadedAgent } from './config.ts';
 import { listModels, getModel } from '../provider/models.ts';
 import type { Effort } from '../types.ts';
@@ -230,19 +230,52 @@ export function createWSHandler(
 
         // Auto-dispatch on card assignment
         taskboard.on('card:assigned', async ({ card, agent: agentName }: { card: Card; agent: string }) => {
+            const agentObj = agentMap.get(agentName);
+            if (!agentObj) return;
+
             const message = taskboard.buildDispatchMessage(card);
+
+            // Create per-card window if agent uses CodebaseWindow
+            if (!card.window && agentObj.window instanceof CodebaseWindow) {
+                card.window = new CodebaseWindow({ cwd: (agentObj.window as CodebaseWindow).cwd });
+            }
+
+            // Inherit files from done dependencies
+            if (card.dependsOn?.length && card.window) {
+                for (const depId of card.dependsOn) {
+                    const dep = taskboard.get(depId);
+                    if (dep?.window) {
+                        for (const file of dep.window.list()) {
+                            if (!card.window.has(file.id)) {
+                                card.window.open((file as any).fullPath);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Swap agent's window to this card's window during dispatch
+            const originalWindow = agentObj.window;
+            if (card.window) agentObj.window = card.window;
+
             try {
                 taskboard.moveCard(card.id, 'in_progress');
                 const result = await dispatch(agentName, message, {
                     source: `board:${card.id}`,
                     silent: false,
                 });
-                if (result?.text) {
+
+                // Smart auto-advance: only if agent didn't move card manually
+                const current = taskboard.get(card.id);
+                if (current?.column === 'in_progress' && result?.text) {
                     taskboard.setResult(card.id, result.text);
                 }
             } catch (err: any) {
                 taskboard.appendContext(card.id, `\u274c Error: ${err.message}`);
                 taskboard.moveCard(card.id, 'todo');
+            } finally {
+                // Restore agent's original window
+                agentObj.window = originalWindow;
             }
         });
 

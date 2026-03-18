@@ -9,7 +9,7 @@
  * Shares the same TaskBoardWindow and Workspace as other agents.
  */
 
-import { Agent, tool } from '../../../../packages/drift/src/index.ts';
+import { Agent, tool } from '@drift/core';
 import { TaskBoardWindow, type TaskItem } from '../windows/task-window.tsx';
 
 export class PlannerAgent extends Agent {
