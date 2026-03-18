@@ -10,6 +10,7 @@ export { tool, ToolRegistry, defineTool } from './decorators/tool.ts';
 export { Conversation, type TrimStats } from './core/conversation.ts';
 export { Cache } from './core/cache.ts';
 export { Window, type WindowItem, type WindowChangeEvent, type ChangeAction } from './core/window.ts';
+export { Workspace, type WorkspaceChangeEvent, type WorkspaceAction } from './core/workspace.ts';
 export { MCP, type MCPServerConfig } from './core/mcp.ts';
 export { Pricing } from './core/pricing.ts';
 export { Provider } from './provider/provider.ts';

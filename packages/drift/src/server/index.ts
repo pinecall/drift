@@ -18,6 +18,7 @@ import { createWSHandler } from './ws.ts';
 import { detectViteConfig, spawnViteDev } from './vite-dev.ts';
 import type { Agent } from '../core/agent.ts';
 import type { Window } from '../core/window.ts';
+import type { Workspace } from '../core/workspace.ts';
 import type { ChildProcess } from 'node:child_process';
 import type { Storage } from '../core/storage.ts';
 import { SQLiteStorage } from '../core/sqlite-storage.ts';
@@ -45,6 +46,7 @@ const MIME: Record<string, string> = {
 export interface DriftServerOptions extends Partial<DriftConfig> {
     storage?: Storage | boolean;
     auth?: DriftAuth;
+    workspace?: Workspace<any>;
 }
 
 export class DriftServer {
@@ -55,6 +57,7 @@ export class DriftServer {
     private _ws: ReturnType<typeof createWSHandler> | null = null;
     private _agents: LoadedAgent[] = [];
     private _windows = new Map<string, Window<any, any>>();
+    private _workspace: Workspace<any> | null = null;
     private _uiDir: string | null = null;
     private _viteProcess: ChildProcess | null = null;
 
@@ -66,6 +69,7 @@ export class DriftServer {
         } else {
             this.config = { ...loadConfig(), ...configOrDir };
             this.auth = configOrDir?.auth;
+            this._workspace = configOrDir?.workspace || null;
             // storage: false → disabled, Storage instance → use it, undefined/true → SQLite default
             if (configOrDir && configOrDir.storage === false) {
                 this.storage = null;
@@ -92,7 +96,18 @@ export class DriftServer {
             }
         }
 
-        // 3. Resolve UI directory
+        // 3. Inject workspace into all agents + restore from storage
+        if (this._workspace) {
+            for (const { agent } of this._agents) {
+                agent.workspace = this._workspace;
+            }
+            if (this.storage) {
+                const saved = this.storage.loadWorkspace(this._workspace.name);
+                if (saved) this._workspace.loadJSON(saved);
+            }
+        }
+
+        // 4. Resolve UI directory
         if (this.config.ui) {
             const uiPath = path.resolve(this.config.cwd, this.config.ui);
             if (fs.existsSync(uiPath)) {
@@ -102,13 +117,13 @@ export class DriftServer {
             }
         }
 
-        // 4. Create HTTP server
+        // 5. Create HTTP server
         this._httpServer = http.createServer((req, res) => {
             this._handleHttp(req, res);
         });
 
-        // 5. WebSocket handler
-        this._ws = createWSHandler(this._httpServer, this._agents, this._windows, this.storage || undefined, this.auth);
+        // 6. WebSocket handler
+        this._ws = createWSHandler(this._httpServer, this._agents, this._windows, this.storage || undefined, this.auth, this._workspace || undefined);
 
         // 6. Pre-load files from config
         if (this.config.preload.length > 0) {
@@ -127,6 +142,9 @@ export class DriftServer {
                 if (windowNames.length > 0) {
                     console.log(`  Windows (${windowNames.length}, shared):`);
                     for (const name of windowNames) console.log(`    • ${name}`);
+                }
+                if (this._workspace) {
+                    console.log(`  Workspace: ${this._workspace.name}`);
                 }
                 if (this._uiDir) console.log(`  UI:        ${this._uiDir}`);
                 if (this.config.preload.length > 0) console.log(`  Preloaded: ${this.config.preload.length} file(s)`);

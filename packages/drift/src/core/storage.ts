@@ -36,6 +36,10 @@ export interface Storage {
     saveWindow(sessionId: string, windowClass: string, data: any): Promise<void> | void;
     loadWindow(sessionId: string, windowClass: string): Promise<any | null> | any | null;
 
+    // Workspace state (shared across agents)
+    saveWorkspace(name: string, data: any): Promise<void> | void;
+    loadWorkspace(name: string): Promise<any | null> | any | null;
+
     // Lifecycle
     close(): Promise<void> | void;
 }

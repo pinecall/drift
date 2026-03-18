@@ -56,6 +56,13 @@ export class SQLiteStorage implements Storage {
                 PRIMARY KEY (session_id, window_class),
                 FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
             );
+
+            CREATE TABLE IF NOT EXISTS workspace_state (
+                name       TEXT PRIMARY KEY,
+                state      TEXT NOT NULL,
+                version    INTEGER DEFAULT 1,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
         `);
     }
 
@@ -157,6 +164,25 @@ export class SQLiteStorage implements Storage {
         ).get(sessionId, windowClass) as any;
         if (!row) return null;
         return JSON.parse(row.state);
+    }
+
+    // ── Workspace State ─────────────────────────────
+
+    saveWorkspace(name: string, data: any): void {
+        const stmt = this.db.prepare(`
+            INSERT OR REPLACE INTO workspace_state (name, state, version, updated_at)
+            VALUES (?, ?, COALESCE(
+                (SELECT version FROM workspace_state WHERE name = ?) + 1, 1
+            ), CURRENT_TIMESTAMP)
+        `);
+        stmt.run(name, JSON.stringify(data), name);
+    }
+
+    loadWorkspace(name: string): any | null {
+        const row = this.db.prepare(
+            'SELECT state FROM workspace_state WHERE name = ?'
+        ).get(name) as any;
+        return row ? JSON.parse(row.state) : null;
     }
 
     // ── Lifecycle ───────────────────────────────────

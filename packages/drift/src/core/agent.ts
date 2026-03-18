@@ -23,6 +23,7 @@ import { resolvePrompt } from './prompt.ts';
 import { Conversation } from './conversation.ts';
 import { Cache } from './cache.ts';
 import { Window } from './window.ts';
+import { Workspace } from './workspace.ts';
 import { Pricing } from './pricing.ts';
 import { Provider } from '../provider/provider.ts';
 import {
@@ -119,6 +120,12 @@ export class Agent extends EventEmitter {
 
     /** Reactive context window (CodebaseWindow, TradingWindow, etc.) */
     window?: Window<any>;
+
+    /** Shared workspace — injected by DriftServer, shared across all agents */
+    workspace?: Workspace<any>;
+
+    /** Which workspace slices this agent sees in its prompt. null/undefined = all. */
+    workspaceSlices?: string[];
 
     /** Built-in tools to register. Categories: 'edit' | 'filesystem' | 'shell' | 'all', or individual names. Empty = none */
     builtinTools: string[] = [];
@@ -567,7 +574,7 @@ export class Agent extends EventEmitter {
             this.emit('tool:execute', { name: toolCall.name, params });
 
             const start = Date.now();
-            const ctx: ToolContext = { cwd: this._cwd, window: this.window };
+            const ctx: ToolContext = { cwd: this._cwd, window: this.window, workspace: this.workspace };
 
             try {
                 const result = await this._registry.execute(toolCall.name, params, ctx);
@@ -597,7 +604,15 @@ export class Agent extends EventEmitter {
         // Block 1: Base prompt
         entries.push({ type: 'text', text: this._resolvedPrompt });
 
-        // Block 2: Window content (if available)
+        // Block 2: Workspace slices (shared state — before window)
+        if (this.workspace) {
+            const workspaceContent = this.workspace.render(this.workspaceSlices);
+            if (workspaceContent) {
+                entries.push({ type: 'text', text: workspaceContent });
+            }
+        }
+
+        // Block 3: Window content (if available)
         if (this.window) {
             const windowContent = this.window.render();
             if (windowContent) {

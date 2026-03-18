@@ -21,6 +21,7 @@ import type { Server as HttpServer, IncomingMessage } from 'node:http';
 import type { Agent } from '../core/agent.ts';
 import { Session } from '../core/session.ts';
 import type { Window } from '../core/window.ts';
+import type { Workspace } from '../core/workspace.ts';
 import type { CodebaseWindow } from '../windows/codebase-window.tsx';
 import type { LoadedAgent } from './config.ts';
 import { listModels, getModel } from '../provider/models.ts';
@@ -44,6 +45,7 @@ export function createWSHandler(
     windows: Map<string, Window<any, any>>,
     storage?: Storage,
     auth?: DriftAuth,
+    workspace?: Workspace<any>,
 ) {
     const wss = new WebSocketServer({ server: httpServer });
     const clients = new Set<WebSocket>();
@@ -75,6 +77,20 @@ export function createWSHandler(
     for (const [className, window] of windows) {
         window.on('change', (event) => {
             broadcast({ event: 'window:changed', windowClass: className, ...event });
+        });
+    }
+
+    // ── Wire workspace change events → broadcast + debounced persist ──
+
+    let _workspacePersistTimer: ReturnType<typeof setTimeout> | null = null;
+    if (workspace) {
+        workspace.on('change', (event) => {
+            broadcast({ event: 'workspace:changed', name: workspace.name, ...event });
+            // Debounced persistence — broadcast is instant, SQLite write max 1x/100ms
+            if (storage) {
+                if (_workspacePersistTimer) clearTimeout(_workspacePersistTimer);
+                _workspacePersistTimer = setTimeout(() => _persistWorkspace(), 100);
+            }
         });
     }
 
@@ -120,6 +136,17 @@ export function createWSHandler(
                 action: 'sync',
                 items: window.list(),
                 state: window.state,
+            });
+        }
+
+        // Send current workspace state
+        if (workspace) {
+            send(ws, {
+                event: 'workspace:changed',
+                name: workspace.name,
+                action: 'sync',
+                state: workspace.state,
+                versions: workspace.versions,
             });
         }
 
@@ -514,6 +541,22 @@ export function createWSHandler(
                 break;
             }
 
+            // ── Workspace ─────────────────────────────
+
+            case 'workspace:setState': {
+                if (workspace && msg.patch) {
+                    workspace.setState(msg.patch);
+                }
+                break;
+            }
+
+            case 'workspace:setSlice': {
+                if (workspace && msg.slice !== undefined && msg.value !== undefined) {
+                    workspace.setSlice(msg.slice, msg.value);
+                }
+                break;
+            }
+
             // ── Agents ──────────────────────────────
 
             case 'agents:list': {
@@ -724,6 +767,12 @@ export function createWSHandler(
         if (!storage) return;
         const winClass = win.constructor.name;
         storage.saveWindow('__shared__', winClass, win.toJSON());
+    }
+
+    /** Persist workspace state to storage (debounced — called from change listener) */
+    function _persistWorkspace() {
+        if (!storage || !workspace) return;
+        storage.saveWorkspace(workspace.name, workspace.toJSON());
     }
 
     function _getAgentConfig(agent: Agent) {

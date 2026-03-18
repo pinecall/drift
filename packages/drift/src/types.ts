@@ -30,7 +30,8 @@ export interface ToolResult {
 
 export interface ToolContext {
     cwd: string;
-    window?: any;   // Window<any, any> — kept as `any` to avoid circular import
+    window?: any;      // Window<any, any> — kept as `any` to avoid circular import
+    workspace?: any;   // Workspace<any> — shared state across agents
     diffTracker?: DiffTracker;
     conversation?: any;
     [key: string]: any;

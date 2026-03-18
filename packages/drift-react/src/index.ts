@@ -9,6 +9,7 @@ export { DriftProvider, useDriftContext } from './provider.tsx';
 
 // Hooks
 export { useWindow, type UseWindowReturn } from './use-window.ts';
+export { useWorkspace, type UseWorkspaceReturn } from './use-workspace.ts';
 export { useChat, type UseChatReturn, type NudgeOptions } from './use-chat.ts';
 export { useThread, type UseThreadReturn, type ThreadOptions } from './use-thread.ts';
 export { useDrift, type UseDriftReturn } from './use-drift.ts';
