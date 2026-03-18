@@ -1637,6 +1637,29 @@ function Dashboard() {
 
 Workspace state is **automatically persisted** to SQLite (`workspace_state` table) with debounced writes (max 1x/100ms). Restored on server restart.
 
+---
+
+## `useStreamBuffer` — Smooth Streaming Animation
+
+Buffers streaming text chunks and reveals them progressively using `requestAnimationFrame`, creating a fluid typewriter effect instead of abrupt chunk-by-chunk updates.
+
+```typescript
+import { useChat, useStreamBuffer } from 'drift-react';
+
+function Chat() {
+    const { messages: raw, send, isStreaming } = useChat('my-agent');
+    const messages = useStreamBuffer(raw, { charsPerFrame: 3 });
+    // render 'messages' — text flows character-by-character during streaming
+}
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `charsPerFrame` | `number` | `3` | Characters revealed per animation frame (~180 chars/sec at 60fps) |
+| `instant` | `boolean` | `false` | Skip animation, show all text immediately |
+
+Only the **last assistant message** is animated during streaming. Completed messages pass through unchanged. Non-text parts (thinking, tool calls) are never buffered.
+
 ## Drift Server
 
 HTTP + WebSocket server that exposes agents and windows to any UI. Serves a React build as static files.

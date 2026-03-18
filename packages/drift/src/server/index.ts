@@ -86,12 +86,15 @@ export class DriftServer {
         // 1. Load agents (auto-discover + built-in includes)
         this._agents = await loadAgents(this.config);
 
-        // 2. Collect shared windows
+        // 2. Collect shared windows — agents with same window class share ONE instance
         for (const { agent } of this._agents) {
             if (agent.window) {
                 const className = agent.window.constructor.name;
                 if (!this._windows.has(className)) {
                     this._windows.set(className, agent.window);
+                } else {
+                    // Replace this agent's window with the shared instance
+                    agent.window = this._windows.get(className)!;
                 }
             }
         }
