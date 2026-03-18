@@ -285,7 +285,7 @@ export function createWSHandler(
         });
 
         // Broadcast specific board events
-        for (const evt of ['card:moved', 'card:unblocked', 'card:approved', 'card:rejected']) {
+        for (const evt of ['card:moved', 'card:unblocked', 'card:approved', 'card:rejected', 'card:removed', 'card:updated']) {
             taskboard.on(evt, (data: any) => {
                 broadcast({ event: `board:${evt.replace('card:', '')}`, ...data });
             });
@@ -805,12 +805,54 @@ export function createWSHandler(
 
             case 'board:list': {
                 if (taskboard) {
-                    const columns = taskboard.state.columns;
-                    const board: Record<string, Card[]> = {};
-                    for (const col of columns) {
-                        board[col] = taskboard.byColumn(col);
+                    send(ws, { event: 'board:list', ...taskboard.serializeBoard() });
+                }
+                break;
+            }
+
+            case 'board:getCard': {
+                if (taskboard && msg.id) {
+                    const card = taskboard.get(msg.id);
+                    if (card) {
+                        send(ws, { event: 'board:card', card: taskboard.serializeCard(card) });
+                    } else {
+                        send(ws, { event: 'board:card', card: null, error: 'Card not found' });
                     }
-                    send(ws, { event: 'board:list', board, columns });
+                }
+                break;
+            }
+
+            case 'board:addComment': {
+                if (taskboard && msg.id && msg.text) {
+                    taskboard.appendContext(msg.id, msg.text);
+                    const card = taskboard.get(msg.id);
+                    if (card) {
+                        broadcast({ event: 'board:commented', card: taskboard.serializeCard(card), text: msg.text });
+                    }
+                }
+                break;
+            }
+
+            case 'board:updateCard': {
+                if (taskboard && msg.id) {
+                    const fields: Record<string, any> = {};
+                    for (const key of ['title', 'description', 'priority', 'labels', 'assignee', 'requiresHumanReview']) {
+                        if (msg[key] !== undefined) fields[key] = msg[key];
+                    }
+                    const updated = taskboard.updateCard(msg.id, fields);
+                    if (updated) {
+                        send(ws, { event: 'board:card', card: taskboard.serializeCard(updated) });
+                    }
+                }
+                break;
+            }
+
+            case 'board:removeCard': {
+                if (taskboard && msg.id) {
+                    const ok = taskboard.removeCard(msg.id);
+                    if (ok) {
+                        broadcast({ event: 'board:removed', id: msg.id });
+                    }
                 }
                 break;
             }

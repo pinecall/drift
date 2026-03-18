@@ -258,6 +258,76 @@ export class TaskBoard extends Window<Card, BoardState> {
         return this.list().filter(c => !this.isBlocked(c.id));
     }
 
+    // ── Mutations ───────────────────────────────────
+
+    /** Remove a card from the board. */
+    removeCard(id: string): boolean {
+        const card = this.get(id);
+        if (!card) return false;
+        this.remove(id);
+        this.emit('card:removed', { card });
+        return true;
+    }
+
+    /** Partial update of card fields. */
+    updateCard(id: string, fields: Partial<Pick<Card, 'title' | 'description' | 'priority' | 'labels' | 'assignee' | 'requiresHumanReview'>>): Card | null {
+        const card = this.get(id);
+        if (!card) return null;
+        this.update(id, { ...fields, updatedAt: Date.now() } as Partial<Card>);
+        const updated = this.get(id)!;
+        this.emit('card:updated', { card: updated, fields: Object.keys(fields) });
+        return updated;
+    }
+
+    // ── Serialization ───────────────────────────────
+
+    /** Serialize a card to a JSON-safe object with full detail. */
+    serializeCard(card: Card): Record<string, any> {
+        const blocked = this.isBlocked(card.id);
+        const blockers = blocked ? this.getBlockers(card.id).map(b => ({ id: b.id, title: b.title, column: b.column })) : [];
+
+        const deps = (card.dependsOn || []).map(depId => {
+            const dep = this.get(depId);
+            return dep
+                ? { id: dep.id, title: dep.title, column: dep.column, done: this._isDone(dep.column) }
+                : { id: depId, title: '(deleted)', column: 'unknown', done: false };
+        });
+
+        const windowFiles = card.window
+            ? card.window.list().map((f: any) => ({ path: f.id, fullPath: f.fullPath }))
+            : [];
+
+        return {
+            id: card.id,
+            title: card.title,
+            description: card.description || null,
+            column: card.column,
+            assignee: card.assignee || null,
+            priority: card.priority ?? 3,
+            labels: card.labels || [],
+            dependsOn: card.dependsOn || [],
+            dependencies: deps,
+            blocked,
+            blockers,
+            requiresHumanReview: card.requiresHumanReview || false,
+            context: card.context || null,
+            result: card.result || null,
+            windowFiles,
+            createdAt: card.createdAt,
+            updatedAt: card.updatedAt,
+        };
+    }
+
+    /** Serialize the full board state. */
+    serializeBoard(): { columns: string[]; cards: Record<string, any[]> } {
+        const columns = this._state.columns;
+        const cards: Record<string, any[]> = {};
+        for (const col of columns) {
+            cards[col] = this.byColumn(col).map(c => this.serializeCard(c));
+        }
+        return { columns, cards };
+    }
+
     // ── Prompt Rendering ────────────────────────────
 
     /** Render board as Kanban XML for agent system prompt. */

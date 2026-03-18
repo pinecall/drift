@@ -27,6 +27,7 @@
 - [Human Review Gates](#human-review-gates)
 - [Agent System Prompt](#agent-system-prompt)
 - [WebSocket Protocol](#websocket-protocol)
+- [REST API](#rest-api)
 - [Extending](#extending)
 - [Multi-Agent Example](#multi-agent-example)
 - [API Reference](#api-reference)
@@ -367,12 +368,16 @@ This means every agent with a taskboard can see the full board state without cal
 
 | Action | Payload | Description |
 |--------|---------|-------------|
-| `board:addCard` | `{ card: CardInput }` | Add new card |
-| `board:moveCard` | `{ id, column }` | Move card |
-| `board:assignCard` | `{ id, agent }` | Assign to agent |
-| `board:approveCard` | `{ id }` | Human approval |
-| `board:rejectCard` | `{ id, reason? }` | Human rejection |
-| `board:list` | — | Get all cards by column |
+| `board:list` | — | Get full board (serialized with files, deps, blocked) |
+| `board:getCard` | `{ id }` | Get card detail → `{ event: 'board:card', card }` |
+| `board:addCard` | `{ card: CardInput }` | Create card → `board:cardAdded` |
+| `board:moveCard` | `{ id, column }` | Move card → broadcasts `board:moved` |
+| `board:assignCard` | `{ id, agent }` | Assign agent → auto-dispatch if unblocked |
+| `board:updateCard` | `{ id, title?, description?, priority?, labels?, assignee? }` | Update fields → `board:updated` |
+| `board:addComment` | `{ id, text }` | Append comment → broadcasts `board:commented` |
+| `board:removeCard` | `{ id }` | Delete card → broadcasts `board:removed` |
+| `board:approveCard` | `{ id }` | Human approval → `board:approved` |
+| `board:rejectCard` | `{ id, reason? }` | Human rejection → `board:rejected` |
 
 **Events (Server → Client):**
 
@@ -383,6 +388,65 @@ This means every agent with a taskboard can see the full board state without cal
 | `board:unblocked` | `{ card }` | Dependencies satisfied |
 | `board:approved` | `{ card }` | Human approved |
 | `board:rejected` | `{ card, reason }` | Human rejected |
+| `board:commented` | `{ card, text }` | Comment added |
+| `board:updated` | `{ card, fields }` | Card fields changed |
+| `board:removed` | `{ id }` | Card deleted |
+| `board:card` | `{ card }` | Response to `board:getCard` / `board:updateCard` |
+
+---
+
+## REST API
+
+All endpoints return JSON. Cards are serialized with `context`, `result`, `windowFiles`, `blocked`, `blockers`, and `dependencies` — everything a UI needs.
+
+**Board**
+
+| Method | Path | Body | Response |
+|--------|------|------|----------|
+| GET | `/api/board` | — | `{ columns, cards: { [col]: Card[] } }` |
+| GET | `/api/board/cards` | — | `{ cards: Card[] }` (flat) |
+
+**Cards CRUD**
+
+| Method | Path | Body | Response |
+|--------|------|------|----------|
+| GET | `/api/board/cards/:id` | — | `{ card }` — full detail |
+| POST | `/api/board/cards` | `CardInput` | `{ card }` — created |
+| PATCH | `/api/board/cards/:id` | `{ title?, description?, priority?, ... }` | `{ card }` — updated |
+| DELETE | `/api/board/cards/:id` | — | `{ ok: true }` |
+
+**Card Actions**
+
+| Method | Path | Body | Response |
+|--------|------|------|----------|
+| POST | `/api/board/cards/:id/move` | `{ column }` | `{ card }` |
+| POST | `/api/board/cards/:id/comment` | `{ text }` | `{ card }` |
+| POST | `/api/board/cards/:id/assign` | `{ agent }` | `{ card }` |
+| POST | `/api/board/cards/:id/approve` | — | `{ card }` |
+| POST | `/api/board/cards/:id/reject` | `{ reason? }` | `{ card }` |
+
+**Serialized Card shape** (all responses):
+```json
+{
+  "id": "card-1-xxx",
+  "title": "Implement auth",
+  "description": "...",
+  "column": "in_progress",
+  "assignee": "backend",
+  "priority": 2,
+  "labels": ["api"],
+  "dependsOn": ["card-0-xxx"],
+  "dependencies": [{ "id": "card-0-xxx", "title": "Setup DB", "column": "done", "done": true }],
+  "blocked": false,
+  "blockers": [],
+  "requiresHumanReview": false,
+  "context": "Previous comments...",
+  "result": "Agent output...",
+  "windowFiles": [{ "path": "src/auth.ts", "fullPath": "/project/src/auth.ts" }],
+  "createdAt": 1710792000000,
+  "updatedAt": 1710792100000
+}
+```
 
 ---
 
@@ -524,6 +588,10 @@ npx tsx test/run.ts --integration --filter multi-agent
 | `setResult(id, result)` | Set output + auto-advance |
 | `approveCard(id)` | Move from IN_REVIEW → next column |
 | `rejectCard(id, reason?)` | Move back to TODO with reason |
+| `removeCard(id)` | Delete card, emit `card:removed` |
+| `updateCard(id, fields)` | Partial update (title, desc, priority, labels) |
+| `serializeCard(card)` | JSON-safe with window files, blocked, deps |
+| `serializeBoard()` | Full board: `{ columns, cards }` serialized |
 | `byColumn(col)` | Query cards by column |
 | `byAssignee(agent)` | Query cards by agent |
 | `isBlocked(id)` | Check if deps are met |

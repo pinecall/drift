@@ -319,12 +319,12 @@ export class DriftServer {
 
     // ── HTTP Handler ────────────────────────────────
 
-    private _handleHttp(req: http.IncomingMessage, res: http.ServerResponse): void {
+    private async _handleHttp(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
         const url = req.url || '/';
 
         // CORS
         res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
         res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
         if (req.method === 'OPTIONS') {
@@ -355,6 +355,103 @@ export class DriftServer {
             return;
         }
 
+        // ── Board REST API ──────────────────────────
+
+        const taskboard = this._taskboard;
+
+        if (taskboard && url.startsWith('/api/board')) {
+            const json = (data: any) => {
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify(data));
+            };
+            const json404 = () => {
+                res.writeHead(404, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Card not found' }));
+            };
+
+            // GET /api/board — full board state
+            if (req.method === 'GET' && url === '/api/board') {
+                return json(taskboard.serializeBoard());
+            }
+
+            // GET /api/board/cards — all cards flat
+            if (req.method === 'GET' && url === '/api/board/cards') {
+                return json({ cards: taskboard.list().map(c => taskboard.serializeCard(c)) });
+            }
+
+            // POST /api/board/cards — create card
+            if (req.method === 'POST' && url === '/api/board/cards') {
+                const body = await this._readBody(req);
+                const card = taskboard.addCard(body);
+                return json({ card: taskboard.serializeCard(card) });
+            }
+
+            // Card-specific routes: /api/board/cards/:id[/action]
+            const cardMatch = url.match(/^\/api\/board\/cards\/([^/]+)(\/[a-z]+)?$/);
+            if (cardMatch) {
+                const [, cardId, action] = cardMatch;
+
+                // GET /api/board/cards/:id
+                if (req.method === 'GET' && !action) {
+                    const card = taskboard.get(cardId);
+                    return card ? json({ card: taskboard.serializeCard(card) }) : json404();
+                }
+
+                // PATCH /api/board/cards/:id — update card fields
+                if (req.method === 'PATCH' && !action) {
+                    const body = await this._readBody(req);
+                    const updated = taskboard.updateCard(cardId, body);
+                    return updated ? json({ card: taskboard.serializeCard(updated) }) : json404();
+                }
+
+                // DELETE /api/board/cards/:id
+                if (req.method === 'DELETE' && !action) {
+                    const ok = taskboard.removeCard(cardId);
+                    if (ok) return json({ ok: true });
+                    return json404();
+                }
+
+                // POST /api/board/cards/:id/move
+                if (req.method === 'POST' && action === '/move') {
+                    const { column } = await this._readBody(req);
+                    taskboard.moveCard(cardId, column);
+                    const card = taskboard.get(cardId);
+                    return card ? json({ card: taskboard.serializeCard(card) }) : json404();
+                }
+
+                // POST /api/board/cards/:id/comment
+                if (req.method === 'POST' && action === '/comment') {
+                    const { text } = await this._readBody(req);
+                    taskboard.appendContext(cardId, text);
+                    const card = taskboard.get(cardId);
+                    return card ? json({ card: taskboard.serializeCard(card) }) : json404();
+                }
+
+                // POST /api/board/cards/:id/assign
+                if (req.method === 'POST' && action === '/assign') {
+                    const { agent } = await this._readBody(req);
+                    taskboard.assignCard(cardId, agent);
+                    const card = taskboard.get(cardId);
+                    return card ? json({ card: taskboard.serializeCard(card) }) : json404();
+                }
+
+                // POST /api/board/cards/:id/approve
+                if (req.method === 'POST' && action === '/approve') {
+                    taskboard.approveCard(cardId);
+                    const card = taskboard.get(cardId);
+                    return card ? json({ card: taskboard.serializeCard(card) }) : json404();
+                }
+
+                // POST /api/board/cards/:id/reject
+                if (req.method === 'POST' && action === '/reject') {
+                    const { reason } = await this._readBody(req);
+                    taskboard.rejectCard(cardId, reason);
+                    const card = taskboard.get(cardId);
+                    return card ? json({ card: taskboard.serializeCard(card) }) : json404();
+                }
+            }
+        }
+
         // Static files from UI directory
         if (this._uiDir) {
             const urlPath = url.split('?')[0];
@@ -379,6 +476,21 @@ export class DriftServer {
 
         res.writeHead(404);
         res.end('Not found');
+    }
+
+    /** Read and parse JSON request body. */
+    private _readBody(req: http.IncomingMessage): Promise<any> {
+        return new Promise((resolve, reject) => {
+            const chunks: Buffer[] = [];
+            req.on('data', (chunk: Buffer) => chunks.push(chunk));
+            req.on('end', () => {
+                try {
+                    const raw = Buffer.concat(chunks).toString();
+                    resolve(raw ? JSON.parse(raw) : {});
+                } catch { resolve({}); }
+            });
+            req.on('error', reject);
+        });
     }
 
     /**
