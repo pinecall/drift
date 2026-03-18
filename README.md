@@ -2632,7 +2632,41 @@ node --import tsx examples/basic/<file>.ts
 | `define-tool.ts` | `defineTool()` JS API — no decorators needed |
 | `multi-turn.ts` | 5-turn conversation with context memory |
 | `server.ts` | `DriftServer` — programmatic server with agents + window |
-| `task-board/` | Full React app — bidirectional window reactivity, multi-session sidebar |
+| `task-board/` | Full React app — **multi-agent** board with shared workspace |
+
+### Task Board — Multi-Agent Example
+
+Three specialized agents collaborate through a shared window + workspace:
+
+```bash
+cd examples/task-board && npm install && npm run build
+cd ../.. && npx tsx examples/task-board/server/index.ts
+# → http://localhost:3200
+```
+
+| Agent | Role | Key Tools |
+|-------|------|-----------|
+| ⚡ `task-agent` | CRUD operations | `create_task`, `move_task`, `update_task`, `delete_task` |
+| 📋 `planner-agent` | Project decomposition | `plan_project`, `create_task`, `suggest_priorities` |
+| 🔍 `reviewer-agent` | Quality review | `review_task`, `summarize_sprint`, `move_task` |
+
+All 3 agents share:
+- **Same Window** (`TaskBoardWindow`) — tasks, statuses, activity log
+- **Same Workspace** — `stats` (totalCreated, totalCompleted, etc.) + `lastActivity`
+
+UI features:
+- **Agent Selector** — tabs in chat to switch between agents
+- **Stats Dashboard** — real-time stat cards (Created, Completed, Deleted, AI Actions)
+- **Agent Badges** — color-coded per agent in sidebar sessions
+
+```typescript
+// server/index.ts
+const workspace = new Workspace('task-board', {
+    stats: { totalCreated: 0, totalCompleted: 0, totalDeleted: 0, agentInteractions: 0 },
+    lastActivity: [],
+});
+const server = new DriftServer({ port: 3200, workspace, storage: true });
+```
 
 ---
 
