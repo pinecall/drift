@@ -151,7 +151,9 @@ function Message({ msg, agentName }: { msg: ChatMessage; agentName: string }) {
 // ── Main Chat ──
 export function Chat({ sessionId }: { sessionId: string }) {
     const [selectedAgent, setSelectedAgent] = useState('task-agent')
-    const { messages, send, abort, clear, isStreaming, lastError, activeAgent } = useChat(selectedAgent, { sessionId })
+    // Each agent gets its own session so the server creates separate Session objects
+    const agentSessionId = `${sessionId}:${selectedAgent}`
+    const { messages, send, abort, clear, isStreaming, lastError, activeAgent } = useChat(selectedAgent, { sessionId: agentSessionId })
     const [input, setInput] = useState('')
     const bottomRef = useRef<HTMLDivElement>(null)
     const scrollRef = useRef<HTMLDivElement>(null)
