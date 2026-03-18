@@ -7,7 +7,7 @@
  * Run: node --import tsx examples/03-streaming.ts
  */
 
-import { Agent, tool } from '@drift/core';
+import { Agent, tool } from 'drift';
 
 class StoryAgent extends Agent {
     model = 'haiku';

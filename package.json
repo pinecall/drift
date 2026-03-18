@@ -1,5 +1,5 @@
 {
-    "name": "@drift/core",
+    "name": "drift",
     "version": "0.1.0",
     "description": "Hyper-minimalist TypeScript framework for AI agents with tool decorators",
     "type": "module",

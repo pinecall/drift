@@ -12,7 +12,7 @@
  *   > {"action":"window:open","path":"src/index.ts"}
  */
 
-import { DriftServer } from '@drift/core';
+import { DriftServer } from 'drift';
 
 const server = new DriftServer({
     port: 3100,

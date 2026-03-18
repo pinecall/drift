@@ -7,7 +7,7 @@
  * Run: node --import tsx examples/05-thinking.ts
  */
 
-import { Agent, tool } from '@drift/core';
+import { Agent, tool } from 'drift';
 
 class MathAgent extends Agent {
     model = 'haiku';

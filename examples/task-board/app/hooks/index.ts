@@ -1,18 +1,18 @@
 /**
- * Local re-exports from @drift/react package.
+ * Local re-exports from drift/react package.
  * Components import from 'drift/react'; this file bridges to the package.
  */
-export { DriftProvider, useDriftContext } from '@drift/core/react'
-export { useChat } from '@drift/core/react'
-export { useThread } from '@drift/core/react'
-export { useWindow } from '@drift/core/react'
-export { useWorkspace } from '@drift/core/react'
-export { useDrift } from '@drift/core/react'
-export { useSessions } from '@drift/core/react'
-export { useStreamBuffer } from '@drift/core/react'
-export type { AgentInfo, AgentConfig, ChatMessage, ToolCallInfo, WindowItem, MessagePart, ServerEvent, ClientMessage } from '@drift/core/react'
-export type { UseChatReturn } from '@drift/core/react'
-export type { UseThreadReturn, ThreadOptions } from '@drift/core/react'
-export type { UseWindowReturn } from '@drift/core/react'
-export type { SessionInfo } from '@drift/core/react'
+export { DriftProvider, useDriftContext } from 'drift/react'
+export { useChat } from 'drift/react'
+export { useThread } from 'drift/react'
+export { useWindow } from 'drift/react'
+export { useWorkspace } from 'drift/react'
+export { useDrift } from 'drift/react'
+export { useSessions } from 'drift/react'
+export { useStreamBuffer } from 'drift/react'
+export type { AgentInfo, AgentConfig, ChatMessage, ToolCallInfo, WindowItem, MessagePart, ServerEvent, ClientMessage } from 'drift/react'
+export type { UseChatReturn } from 'drift/react'
+export type { UseThreadReturn, ThreadOptions } from 'drift/react'
+export type { UseWindowReturn } from 'drift/react'
+export type { SessionInfo } from 'drift/react'
 

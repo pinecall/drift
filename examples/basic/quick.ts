@@ -7,7 +7,7 @@
  * Run: node --import tsx examples/01-quick.ts
  */
 
-import { Agent } from '@drift/core';
+import { Agent } from 'drift';
 
 const agent = new Agent({
     model: 'haiku',

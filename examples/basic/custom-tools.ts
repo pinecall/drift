@@ -8,7 +8,7 @@
  * Run: node --import tsx examples/02-custom-tools.ts
  */
 
-import { Agent, tool } from '@drift/core';
+import { Agent, tool } from 'drift';
 
 // ── Base agent with shared tools ──
 

@@ -39,6 +39,7 @@ console.log(result.cost);   // 0.003241
   - [switchModel()](#switchmodelmodelname-success-message-)
   - [registerTool()](#registertooltooldefinition-boolean)
   - [Accessors](#accessors)
+  - [Lifecycle Hooks](#lifecycle-hooks)
   - [Events](#events)
 - [Session](#session)
   - [Lifecycle](#lifecycle)
@@ -46,7 +47,7 @@ console.log(result.cost);   // 0.003241
   - [Persistence](#persistence)
   - [WebSocket Protocol](#websocket-protocol)
   - [React (useSessions)](#react-usesessions)
-- [Built-in Agents (4)](#built-in-agents-4)
+- [Built-in Agents (5)](#built-in-agents-5)
 - [Multi-Turn Conversations](#multi-turn-conversations)
 - [@tool Decorator](#tool-decorator)
   - [Syntax](#syntax)
@@ -326,9 +327,46 @@ agent.cost           // number — total cost in USD (shortcut for pricing.total
 agent.cwd            // string — working directory
 ```
 
+### Lifecycle Hooks
+
+Override these methods in your subclass to react to agent lifecycle events. No `.on()` needed — just define the method:
+
+```typescript
+class MyAgent extends Agent {
+    model = 'haiku';
+
+    onToolExecute(name: string, params: Record<string, any>) {
+        console.log(`🔧 ${name}(${JSON.stringify(params)})`);
+    }
+
+    onToolResult(name: string, result: any, ms: number) {
+        console.log(`  → done in ${ms}ms`);
+    }
+
+    onText(chunk: string) {
+        process.stdout.write(chunk);
+    }
+}
+```
+
+| Hook | Arguments | When |
+|---|---|---|
+| `onTextStart()` | — | Text block starts streaming |
+| `onText(chunk)` | `chunk: string` | Text token received |
+| `onThinkingStart()` | — | Thinking block starts |
+| `onThinking(text)` | `text: string` | Thinking token received |
+| `onToolStart(toolId, name)` | `toolId: string, name: string` | Tool stream block starts |
+| `onToolExecute(name, params)` | `name: string, params: Record<string, any>` | Tool about to execute |
+| `onToolResult(name, result, ms)` | `name: string, result: any, ms: number` | Tool finished |
+| `onResponseEnd()` | — | Full API response received |
+| `onCost(turnCost, totalCost, turns)` | `turnCost: number, totalCost: number, turns: number` | Cost recorded |
+| `onError(message, status?)` | `message: string, status?: number` | Error occurred |
+
+All hooks are no-ops by default — override only what you need. Hooks work alongside the `EventEmitter` `.on()` API (both fire).
+
 ### Events
 
-`Agent` extends `EventEmitter`. Subscribe with `agent.on(event, handler)`:
+`Agent` extends `EventEmitter`. External consumers (servers, loggers) can use `agent.on(event, handler)`. For subclass behavior, prefer [Lifecycle Hooks](#lifecycle-hooks) above.
 
 | Event | Payload | Description |
 |---|---|---|
@@ -406,7 +444,7 @@ If `chat:send` is called without an existing `sessionId`, a new session is creat
 ### React (`useSessions()`)
 
 ```typescript
-import { useSessions } from '@drift/react';
+import { useSessions } from 'drift/react';
 
 function SessionList() {
     const { sessions, createSession, deleteSession } = useSessions();
@@ -438,24 +476,25 @@ function SessionList() {
 
 ---
 
-## Built-in Agents (4)
+## Built-in Agents (5)
 
-Drift ships with 4 pre-configured agents. Each has a baked-in system prompt and selective built-in tools.
+Drift ships with 5 pre-configured agents. Each has a baked-in system prompt and selective built-in tools.
 
 | Agent | `builtinTools` | Description |
 |---|---|---|
-| `DeveloperAgent` | `['all']` (16 tools) | Full developer — edit, filesystem, shell |
+| `DeveloperAgent` | `['all']` (22 tools) | Full developer — edit, filesystem, shell, board |
 | `DeveloperLiteAgent` | `['edit', 'filesystem']` (11) | Edit + filesystem — no shell access |
 | `PlaywrightAgent` | `['edit', 'filesystem']` + MCP browser_* | Browser automation via Playwright MCP |
 | `ResearcherAgent` | 6 read-only tools | Code investigation — no editing |
+| `ManagerAgent` | `['board']` (6 tools) | Project planner — creates cards, sets deps, assigns agents |
 
 
 ### DeveloperAgent
 
-Full coding agent with all 16 built-in tools.
+Full coding agent with all 22 built-in tools.
 
 ```typescript
-import { DeveloperAgent } from 'drift';
+import { DeveloperAgent } from '@drift/core';
 
 const agent = new DeveloperAgent();
 const result = await agent.run('Add error handling to auth.ts');
@@ -519,6 +558,31 @@ const result = await agent.run('How does the auth flow work?');
 ```
 
 **Tools:** `open_files`, `close_files`, `find_by_name`, `grep_search`, `list_dir`, `project_tree`
+
+### ManagerAgent
+
+Project planner for TaskBoard coordination. No filesystem or edit tools — only board tools:
+
+```typescript
+import { ManagerAgent } from '@drift/core';
+
+const manager = new ManagerAgent();
+// Dispatch with a project description → creates cards with deps and assignments
+```
+
+**Defaults:** `model = 'sonnet'`, `thinking = true`, `effort = 'medium'`, `maxIterations = 10`, `builtinTools = ['board']`
+
+Extend for custom managers:
+
+```typescript
+class SprintManager extends ManagerAgent {
+    prompt = 'You plan agile sprints with 2-week cycles...';
+    model = 'opus';
+    effort = 'high' as const;
+}
+```
+
+**Tools:** `board_view`, `board_read_card`, `board_create_card`, `board_move_card`, `board_add_comment`, `board_update_card`
 
 ---
 
@@ -1295,7 +1359,7 @@ Agent tool modifies window → Window emits 'change'
 **Client-side** — `useWindow()` from `@drift/react` gives you reactive state:
 
 ```typescript
-import { useWindow } from '@drift/react';
+import { useWindow } from 'drift/react';
 
 function Board() {
     const { items, state, updateItem, removeItem, setState } = useWindow<TaskItem, BoardState>();
@@ -1612,7 +1676,7 @@ Agents also access workspace in tools via `ctx.workspace`.
 ### UI Sync (`useWorkspace`)
 
 ```typescript
-import { useWorkspace } from '@drift/react';
+import { useWorkspace } from 'drift/react';
 
 function Dashboard() {
     const { state, setState, setSlice, versions } = useWorkspace<SprintState>();
@@ -1865,32 +1929,48 @@ class ExecutorAgent extends Agent {
 
 ### TaskBoard (Kanban)
 
-Kanban-style task coordination with columns, card assignment, dependencies, and human review gates:
+Kanban-style project management where agents operate like a remote dev team on Trello. Per-card windows, window inheritance, 6 board tools, and a built-in ManagerAgent:
 
 ```typescript
-import { TaskBoard, DriftServer } from 'drift';
+import { TaskBoard, ManagerAgent, DeveloperLiteAgent, DriftServer } from '@drift/core';
 
 const board = new TaskBoard();  // default: TODO → IN_PROGRESS → IN_REVIEW → QA → DONE
+const manager = new ManagerAgent();  // planner — only board tools
 
-// Planner adds cards — auto-dispatches assigned agent
-board.addCard({ title: 'Implement auth', assignee: 'coder', priority: 1 });
-board.addCard({ title: 'Write tests', assignee: 'tester', dependsOn: ['card-1'] });
-board.addCard({ title: 'Review PR', requiresHumanReview: true, dependsOn: ['card-2'] });
-
-const server = new DriftServer({ taskboard: board });
+const server = new DriftServer({
+    include: ['manager'],
+    taskboard: board,
+    agents: [{ name: 'backend', agent: new DeveloperLiteAgent() }],
+});
 ```
 
+**Board tools** (agents use `builtinTools: ['board']`):
+
+| Tool | Description |
+|------|-------------|
+| `board_view` | See all columns + cards |
+| `board_read_card` | Read card details + window files |
+| `board_create_card` | Create cards with deps/assignments |
+| `board_move_card` | Move to any column |
+| `board_add_comment` | Leave notes on cards |
+| `board_update_card` | Modify card fields |
+
+**Per-card windows:** Each card gets its own `CodebaseWindow`. When Card A creates files and Card B depends on A, Card B's window **automatically inherits A's files** — the agent sees them immediately.
+
 **Auto-workflow:**
-1. Card-1 assigned to `coder` → auto-dispatched → moves to IN_PROGRESS
-2. `coder` finishes → `setResult()` → Card-1 moves to DONE
-3. Card-2 unblocks → `tester` auto-dispatched with Card-1's output as context
-4. Card-3 unblocks → pauses at IN_REVIEW for human approval via `board:approveCard`
+1. Manager creates cards via `board_create_card` with dependencies and assigns agents
+2. Cards with no blockers auto-dispatch → agent creates files with its card's window
+3. Agent finishes → auto-advance (or manual `board_move_card` via board tools)
+4. Card done → dependents unblock → inherit window files → auto-dispatch
 
-**Key methods:** `addCard()`, `moveCard()`, `assignCard()`, `approveCard()`, `rejectCard()`, `appendContext()`, `setResult()`, `isBlocked()`, `getReady()`, `byColumn()`, `byAssignee()`
+**ManagerAgent:** Built-in planner with `builtinTools = ['board']`. Extend for custom managers:
+```typescript
+class SprintManager extends ManagerAgent {
+    prompt = 'You plan sprints with priority-based scheduling...';
+}
+```
 
-**WebSocket actions:** `board:addCard`, `board:moveCard`, `board:assignCard`, `board:approveCard`, `board:rejectCard`, `board:list`
-
-See [docs/coordination.md](./docs/coordination.md#taskboard-kanban) for the full reference.
+See [docs/taskboard.md](./docs/taskboard.md) for the full reference.
 
 ### canDispatch (Agent-to-Agent)
 
@@ -1927,7 +2007,7 @@ Default: `"./triggers"`. Triggers are auto-discovered from this directory (same 
 Buffers streaming text chunks and reveals them progressively using `requestAnimationFrame`, creating a fluid typewriter effect instead of abrupt chunk-by-chunk updates.
 
 ```typescript
-import { useChat, useStreamBuffer } from '@drift/react';
+import { useChat, useStreamBuffer } from 'drift/react';
 
 function Chat() {
     const { messages: raw, send, isStreaming } = useChat('my-agent');
@@ -2148,7 +2228,7 @@ npm install @drift/react
 Wrap your app with the WebSocket provider:
 
 ```tsx
-import { DriftProvider } from '@drift/react';
+import { DriftProvider } from 'drift/react';
 
 <DriftProvider url="ws://localhost:3100" reconnect={true} reconnectDelay={2000}>
     <App />
@@ -2169,7 +2249,7 @@ const chat = useChat('developer', { sessionId: 'abc-123' }); // use specific ses
 **Key concept:** everything is a message. The last assistant message in `messages[]` IS the live streaming message — no separate streaming state. Messages use an ordered `parts` array for rich rendering:
 
 ```tsx
-import { useChat, type ChatMessage, type MessagePart } from '@drift/react';
+import { useChat, type ChatMessage, type MessagePart } from 'drift/react';
 
 function Chat({ sessionId }: { sessionId: string }) {
     const { messages, send, abort, clear, isStreaming, lastError, sessionId: sid, activeAgent, swap } = useChat('developer', { sessionId });
@@ -2251,7 +2331,7 @@ nudge(
 Contextual conversations scoped to an entity (card, item, etc.). Each thread has its own conversation history, isolated from the main chat. Internally, a thread is a sub-session with id `${parentSession}::thread::${threadId}`.
 
 ```tsx
-import { useThread } from '@drift/react';
+import { useThread } from 'drift/react';
 
 function TaskCard({ task, sessionId }) {
     const thread = useThread({
@@ -2359,7 +2439,7 @@ function TaskCard({ task, sessionId }) {
 Track and manage all server sessions. Subscribes to session lifecycle events.
 
 ```tsx
-import { useSessions, type SessionInfo } from '@drift/react';
+import { useSessions, type SessionInfo } from 'drift/react';
 
 function Sidebar({ activeId, onSelect }: { activeId: string; onSelect: (id: string) => void }) {
     const { sessions, createSession, deleteSession } = useSessions();
@@ -2402,7 +2482,7 @@ interface SessionInfo {
 ★ Reactive window state. Items and state auto-sync via WebSocket:
 
 ```tsx
-import { useWindow } from '@drift/react';
+import { useWindow } from 'drift/react';
 
 function FileExplorer() {
     const { items, state, open, close, refresh, disable, enable, setState, updateItem, removeItem, size } = useWindow();
@@ -2423,7 +2503,7 @@ function FileExplorer() {
 **With custom windows** (bidirectional reactivity):
 
 ```tsx
-import { useWindow, type WindowItem } from '@drift/react';
+import { useWindow, type WindowItem } from 'drift/react';
 
 interface Task extends WindowItem { id: string; title: string; status: 'todo' | 'doing' | 'done'; }
 interface BoardState { userActivity: { action: string; taskId?: string; at: number }[] }
@@ -2471,7 +2551,7 @@ Every `updateItem`/`removeItem`/`setState` call sends a WebSocket message → se
 Connection status and agent management:
 
 ```tsx
-import { useDrift } from '@drift/react';
+import { useDrift } from 'drift/react';
 
 function Header() {
     const { connected, agents, activeAgent, setActiveAgent, refreshAgents } = useDrift();

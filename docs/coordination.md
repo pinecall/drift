@@ -603,18 +603,18 @@ Subscription triggers are named `__subscribe__::{agent}:{slice}` and appear alon
 
 ## TaskBoard (Kanban)
 
-Kanban-style task coordination with columns, agent assignment, dependencies, human review gates, and per-card context. Extends `Window<Card, BoardState>` — inherits items CRUD, events, persistence, and prompt rendering.
+Kanban-style project management with columns, agent assignment, dependencies, human review gates, per-card `CodebaseWindow`, window inheritance, and 6 board tools. Extends `Window<Card, BoardState>`.
+
+> **Full reference:** See [docs/taskboard.md](./taskboard.md) for board tools, ManagerAgent, per-card windows, window inheritance, dispatch flow, and extending patterns.
 
 ```typescript
-import { TaskBoard, DriftServer } from 'drift';
+import { TaskBoard, ManagerAgent, DriftServer } from '@drift/core';
 
 const board = new TaskBoard();  // default columns
-const server = new DriftServer({ taskboard: board });
+const server = new DriftServer({ include: ['manager'], taskboard: board });
 
-// Planner adds cards
-board.addCard({ title: 'Implement auth', assignee: 'coder', priority: 1 });
-board.addCard({ title: 'Write tests', assignee: 'tester', dependsOn: ['card-1'] });
-board.addCard({ title: 'Review PR', requiresHumanReview: true, dependsOn: ['card-2'] });
+// Manager creates cards via board_create_card tool
+// Agents use board_move_card, board_add_comment, board_read_card
 ```
 
 Default columns: `todo` → `in_progress` → `in_review` → `qa` → `done`
@@ -638,6 +638,7 @@ interface Card {
     createdAt: number;
     updatedAt: number;
     result?: string;                // final output when done
+    window?: CodebaseWindow;        // per-card isolated file workspace
 }
 ```
 
