@@ -1,4 +1,4 @@
-# drift-react
+# @drift/react
 
 React hooks & provider for building UIs with the Drift agent framework.
 
@@ -7,7 +7,7 @@ Connects to a running `DriftServer` via WebSocket and provides real-time reactiv
 ## Quick Start
 
 ```tsx
-import { DriftProvider, useChat, useWindow, useDrift, useSessions } from 'drift-react';
+import { DriftProvider, useChat, useWindow, useDrift, useSessions } from '@drift/react';
 
 function App() {
     return (
@@ -156,7 +156,7 @@ updateSettings({ effort: 'high' });
 Track and manage all server sessions. Subscribes to session lifecycle events.
 
 ```tsx
-import { useSessions, type SessionInfo } from 'drift-react';
+import { useSessions, type SessionInfo } from '@drift/react';
 
 const { sessions, createSession, deleteSession, refreshSessions } = useSessions();
 ```
@@ -199,7 +199,7 @@ interface SessionInfo {
 Track and manage all server sessions. Subscribes to session lifecycle events (`sessions:list`, `sessions:created`, `sessions:updated`, `sessions:deleted`).
 
 ```tsx
-import { useSessions, type SessionInfo } from 'drift-react';
+import { useSessions, type SessionInfo } from '@drift/react';
 
 function Sidebar({ activeId, onSelect }: { activeId: string; onSelect: (id: string) => void }) {
     const { sessions, createSession, deleteSession, refreshSessions } = useSessions();
@@ -340,7 +340,7 @@ import type {
     FileEntry,      // WindowItem + { fullPath, content, lines, disabled, openedAt }
     ServerEvent,    // { event, [key]: any }
     ClientMessage,  // { action, [key]: any }
-} from 'drift-react';
+} from '@drift/react';
 ```
 
 ---
@@ -389,7 +389,7 @@ import type {
 ## Project Structure
 
 ```
-drift-react/
+@drift/react/
 ├── src/
 │   ├── index.ts         # Public API barrel exports\n│   ├── provider.tsx     # DriftProvider + DriftContext
 │   ├── use-chat.ts      # useChat() — parts-based chat hook with sessions

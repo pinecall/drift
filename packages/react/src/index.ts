@@ -1,7 +1,7 @@
 /**
- * drift-react — Public API
+ * @drift/react — Public API
  * 
- * import { DriftProvider, useWindow, useChat, useDrift } from 'drift-react';
+ * import { DriftProvider, useWindow, useChat, useDrift } from '@drift/react';
  */
 
 // Provider

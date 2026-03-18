@@ -377,10 +377,10 @@ Persistence is transparent — no agent code needed.
 
 **On client connect**, the server sends the current workspace state as an initial `workspace:changed` event with `action: 'sync'`.
 
-**React hook usage (drift-react):**
+**React hook usage (@drift/react):**
 
 ```typescript
-import { useDrift } from 'drift-react';
+import { useDrift } from '@drift/react';
 
 function Dashboard() {
     const { workspace } = useDrift();

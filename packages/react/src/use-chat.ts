@@ -1,5 +1,5 @@
 /**
- * drift-react — useChat()
+ * @drift/react — useChat()
  * 
  * Full chat with streaming, history, multi-turn, tool calls.
  * Follows the legacy pattern: everything is a message.

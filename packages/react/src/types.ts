@@ -1,5 +1,5 @@
 /**
- * drift-react — Shared Types
+ * @drift/react — Shared Types
  */
 
 // ── WebSocket Messages ──────────────────────────────

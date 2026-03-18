@@ -1,5 +1,5 @@
 /**
- * drift-react — useWorkspace()
+ * @drift/react — useWorkspace()
  * 
  * Reactive hook for shared workspace state (cross-agent).
  * 

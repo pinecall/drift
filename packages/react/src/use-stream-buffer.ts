@@ -1,5 +1,5 @@
 /**
- * drift-react — useStreamBuffer()
+ * @drift/react — useStreamBuffer()
  * 
  * Smooths out streaming text by buffering incoming chunks and revealing
  * characters progressively using requestAnimationFrame. Creates a fluid

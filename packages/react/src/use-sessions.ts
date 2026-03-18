@@ -1,5 +1,5 @@
 /**
- * drift-react — useSessions()
+ * @drift/react — useSessions()
  * 
  * Tracks all sessions on the server. Provides create, delete, and refresh.
  * Subscribes to sessions:list, sessions:created, sessions:deleted, sessions:updated events.

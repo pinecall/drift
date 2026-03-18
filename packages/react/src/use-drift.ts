@@ -1,5 +1,5 @@
 /**
- * drift-react — useDrift()
+ * @drift/react — useDrift()
  * 
  * Connection status + agent listing + active agent management.
  * 

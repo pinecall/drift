@@ -1,5 +1,5 @@
 /**
- * drift-react — useWindow()
+ * @drift/react — useWindow()
  * 
  * ★ The star hook. Real-time reactive window state.
  * 

@@ -82,7 +82,7 @@ console.log(result.cost);   // 0.003241
   - [Dev Mode](#dev-mode)
   - [Static UI Serving](#static-ui-serving)
   - [WebSocket Protocol](#websocket-protocol)
-- [drift-react](#drift-react)
+- [@drift/react](#@drift/react)
   - [DriftProvider](#driftprovider)
   - [useChat()](#usechatagentname-options)
     - [nudge()](#nudge--ui-triggered-agent-explanations)
@@ -406,7 +406,7 @@ If `chat:send` is called without an existing `sessionId`, a new session is creat
 ### React (`useSessions()`)
 
 ```typescript
-import { useSessions } from 'drift-react';
+import { useSessions } from '@drift/react';
 
 function SessionList() {
     const { sessions, createSession, deleteSession } = useSessions();
@@ -1292,10 +1292,10 @@ Agent tool modifies window → Window emits 'change'
 
 **Server-side** — handled automatically by `DriftServer`. Windows are shared across agents of the same class, and all changes are broadcast to every connected client.
 
-**Client-side** — `useWindow()` from `drift-react` gives you reactive state:
+**Client-side** — `useWindow()` from `@drift/react` gives you reactive state:
 
 ```typescript
-import { useWindow } from 'drift-react';
+import { useWindow } from '@drift/react';
 
 function Board() {
     const { items, state, updateItem, removeItem, setState } = useWindow<TaskItem, BoardState>();
@@ -1612,7 +1612,7 @@ Agents also access workspace in tools via `ctx.workspace`.
 ### UI Sync (`useWorkspace`)
 
 ```typescript
-import { useWorkspace } from 'drift-react';
+import { useWorkspace } from '@drift/react';
 
 function Dashboard() {
     const { state, setState, setSlice, versions } = useWorkspace<SprintState>();
@@ -1927,7 +1927,7 @@ Default: `"./triggers"`. Triggers are auto-discovered from this directory (same 
 Buffers streaming text chunks and reveals them progressively using `requestAnimationFrame`, creating a fluid typewriter effect instead of abrupt chunk-by-chunk updates.
 
 ```typescript
-import { useChat, useStreamBuffer } from 'drift-react';
+import { useChat, useStreamBuffer } from '@drift/react';
 
 function Chat() {
     const { messages: raw, send, isStreaming } = useChat('my-agent');
@@ -2133,14 +2133,14 @@ All messages are JSON: `{ action, ...payload }` (client→server) and `{ event, 
 
 ---
 
-## drift-react
+## @drift/react
 
 React hooks library for building UIs on top of Drift agents. Connects to a `DriftServer` via WebSocket and provides real-time reactive state for chat, windows, and settings.
 
-> Full API reference: [`drift-react/README.md`](drift-react/README.md)
+> Full API reference: [`@drift/react/README.md`](@drift/react/README.md)
 
 ```bash
-npm install drift-react
+npm install @drift/react
 ```
 
 ### DriftProvider
@@ -2148,7 +2148,7 @@ npm install drift-react
 Wrap your app with the WebSocket provider:
 
 ```tsx
-import { DriftProvider } from 'drift-react';
+import { DriftProvider } from '@drift/react';
 
 <DriftProvider url="ws://localhost:3100" reconnect={true} reconnectDelay={2000}>
     <App />
@@ -2169,7 +2169,7 @@ const chat = useChat('developer', { sessionId: 'abc-123' }); // use specific ses
 **Key concept:** everything is a message. The last assistant message in `messages[]` IS the live streaming message — no separate streaming state. Messages use an ordered `parts` array for rich rendering:
 
 ```tsx
-import { useChat, type ChatMessage, type MessagePart } from 'drift-react';
+import { useChat, type ChatMessage, type MessagePart } from '@drift/react';
 
 function Chat({ sessionId }: { sessionId: string }) {
     const { messages, send, abort, clear, isStreaming, lastError, sessionId: sid, activeAgent, swap } = useChat('developer', { sessionId });
@@ -2251,7 +2251,7 @@ nudge(
 Contextual conversations scoped to an entity (card, item, etc.). Each thread has its own conversation history, isolated from the main chat. Internally, a thread is a sub-session with id `${parentSession}::thread::${threadId}`.
 
 ```tsx
-import { useThread } from 'drift-react';
+import { useThread } from '@drift/react';
 
 function TaskCard({ task, sessionId }) {
     const thread = useThread({
@@ -2359,7 +2359,7 @@ function TaskCard({ task, sessionId }) {
 Track and manage all server sessions. Subscribes to session lifecycle events.
 
 ```tsx
-import { useSessions, type SessionInfo } from 'drift-react';
+import { useSessions, type SessionInfo } from '@drift/react';
 
 function Sidebar({ activeId, onSelect }: { activeId: string; onSelect: (id: string) => void }) {
     const { sessions, createSession, deleteSession } = useSessions();
@@ -2402,7 +2402,7 @@ interface SessionInfo {
 ★ Reactive window state. Items and state auto-sync via WebSocket:
 
 ```tsx
-import { useWindow } from 'drift-react';
+import { useWindow } from '@drift/react';
 
 function FileExplorer() {
     const { items, state, open, close, refresh, disable, enable, setState, updateItem, removeItem, size } = useWindow();
@@ -2423,7 +2423,7 @@ function FileExplorer() {
 **With custom windows** (bidirectional reactivity):
 
 ```tsx
-import { useWindow, type WindowItem } from 'drift-react';
+import { useWindow, type WindowItem } from '@drift/react';
 
 interface Task extends WindowItem { id: string; title: string; status: 'todo' | 'doing' | 'done'; }
 interface BoardState { userActivity: { action: string; taskId?: string; at: number }[] }
@@ -2471,7 +2471,7 @@ Every `updateItem`/`removeItem`/`setState` call sends a WebSocket message → se
 Connection status and agent management:
 
 ```tsx
-import { useDrift } from 'drift-react';
+import { useDrift } from '@drift/react';
 
 function Header() {
     const { connected, agents, activeAgent, setActiveAgent, refreshAgents } = useDrift();
@@ -2671,7 +2671,7 @@ const ws = new WebSocket('ws://localhost:3100', {
 });
 ```
 
-With `drift-react`:
+With `@drift/react`:
 ```typescript
 // Pass secret in the WebSocket URL
 <DriftProvider url="ws://localhost:3100?secret=my-super-secret-key-123">
@@ -2895,7 +2895,7 @@ drift/
 │   │       ├── decorators/       # @tool decorator + ToolRegistry
 │   │       ├── windows/          # CodebaseWindow
 │   │       └── tools/            # 16 built-in tools (edit, filesystem, shell)
-│   └── drift-react/              # React hooks (drift/react)
+│   └── @drift/react/              # React hooks (drift/react)
 │       └── src/
 │           ├── index.ts          # Public API barrel exports
 │           ├── provider.tsx      # DriftProvider — WebSocket context

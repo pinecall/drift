@@ -1,5 +1,5 @@
 /**
- * drift-react — DriftProvider
+ * @drift/react — DriftProvider
  * 
  * WebSocket connection context for all drift hooks.
  * 

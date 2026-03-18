@@ -1,5 +1,5 @@
 /**
- * drift-react — useThread()
+ * @drift/react — useThread()
  * 
  * Contextual mini-chat scoped to an entity (card, item, etc.).
  * Each thread has its own conversation history, isolated from the main chat.
