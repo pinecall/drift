@@ -28,6 +28,7 @@
 - [Agent System Prompt](#agent-system-prompt)
 - [WebSocket Protocol](#websocket-protocol)
 - [Extending](#extending)
+- [Multi-Agent Example](#multi-agent-example)
 - [API Reference](#api-reference)
 
 ---
@@ -420,6 +421,95 @@ class SmartDev extends DeveloperLiteAgent {
 
 ---
 
+## Multi-Agent Example
+
+Full pipeline: **Manager plans → DesignDev builds HTML → BackendDev builds JS → PlaywrightAgent tests in browser**.
+
+### Specialized Agents (inherit DeveloperLite)
+
+```typescript
+import { DeveloperLiteAgent, ManagerAgent, PlaywrightAgent } from '@drift/core';
+
+// HTML/CSS specialist — no JS
+class DesignDev extends DeveloperLiteAgent {
+    prompt = 'You create HTML and CSS files. Do NOT write JavaScript.';
+    builtinTools = ['edit', 'filesystem'];  // no board tools — auto-advance handles cards
+}
+
+// JavaScript specialist — reads HTML first
+class BackendDev extends DeveloperLiteAgent {
+    prompt = 'You write JavaScript. Read the HTML to understand DOM structure.';
+    builtinTools = ['edit', 'filesystem'];
+}
+```
+
+### Wiring
+
+```typescript
+const board = new TaskBoard();
+const manager = new ManagerAgent();  // builtinTools = ['board']
+manager.taskboard = board;
+
+// Agent windows are templates — only the cwd is used.
+// Per-card windows are created automatically at dispatch time.
+// The agent never uses its own window during card work.
+designDev.window = new CodebaseWindow({ cwd: projectDir });
+backendDev.window = new CodebaseWindow({ cwd: projectDir });
+
+// Manager plans the project
+const session = new Session(manager, { id: 'planning' });
+await session.run(`Plan a counter app. Agents: "design" (HTML), "backend" (JS).
+Create 2 cards with board_create_card. Card 2 depends on card 1.`);
+```
+
+> **Note:** The agent's `window` is only used as a **cwd template**. When a card is dispatched, the server creates a fresh `CodebaseWindow({ cwd: agent.window.cwd })` for that card, swaps the agent's window to the card's window during execution, then restores it. So each card gets full isolation — the agent's own window is never used directly.
+
+### Real Output (from integration test)
+
+```
+🤖 Manager planning project...
+📋 Board: 2 card(s)
+   • [card-1] "Create index.html – Counter App UI" → design (in_progress)
+   • [card-2] "Create counter.js – Increment Logic" → backend (todo) deps: card-1
+
+⏳ Agents building...
+  📌 [card-1] moved: in_progress → done
+  🔓 [card-2] "Create counter.js" unblocked!
+  📌 [card-2] moved: todo → in_progress
+  📌 [card-2] moved: in_progress → done
+
+📄 index.html: 4,727 bytes
+📄 counter.js: 410 bytes
+
+🎭 Playwright testing the app (visible browser)...
+   Playwright connected: 22 browser tools
+   → Navigated to file://index.html
+   → Verified h1 "Counter", count "0"
+   → Clicked +1 → count "1"
+   ✅ All checks passed
+```
+
+### Running the Demo
+
+```bash
+# Full pipeline with visible browser (Playwright opens headed)
+npx tsx test/integration/multi-agent-demo.ts
+
+# Integration tests (Playwright skips if MCP unavailable)
+npx tsx test/run.ts --integration --filter multi-agent
+```
+
+### What Gets Tested
+
+| Step | Agent | What Happens |
+|------|-------|-------------|
+| 1 | ManagerAgent | Uses `board_create_card` × 2, sets deps + assigns |
+| 2 | DesignDev | Creates `index.html` with HTML/CSS (per-card window) |
+| 3 | BackendDev | Auto-dispatched after step 2, inherits HTML in window, creates `counter.js` |
+| 4 | PlaywrightAgent | Opens browser, navigates to `file://`, clicks button, verifies count |
+
+---
+
 ## API Reference
 
 ### TaskBoard Methods
@@ -450,3 +540,5 @@ class SmartDev extends DeveloperLiteAgent {
 | `tools/board/board-*.ts` | 6 board tools |
 | `agents/manager.ts` | ManagerAgent built-in |
 | `server/ws.ts` | Dispatch wiring, window swap |
+| `test/integration/multi-agent-demo.ts` | Standalone demo with visible browser |
+| `test/integration/multi-agent.test.ts` | Integration tests (Manager + DesignDev + BackendDev) |

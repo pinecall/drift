@@ -1970,7 +1970,12 @@ class SprintManager extends ManagerAgent {
 }
 ```
 
-See [docs/taskboard.md](./docs/taskboard.md) for the full reference.
+See [docs/taskboard.md](./docs/taskboard.md) for the full reference — including a **multi-agent example** (Manager → DesignDev → BackendDev → PlaywrightAgent) with real output.
+
+```bash
+# Watch the full pipeline with visible Playwright browser
+npx tsx test/integration/multi-agent-demo.ts
+```
 
 ### canDispatch (Agent-to-Agent)
 
