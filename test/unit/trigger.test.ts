@@ -7,8 +7,8 @@
  * No API calls — pure logic tests.
  */
 
-import { Trigger, TriggerManager } from '../../packages/drift/src/core/trigger.ts';
-import type { DispatchResult, DispatchFn } from '../../packages/drift/src/core/trigger.ts';
+import { Trigger, TriggerManager } from '../../packages/drift/src/coordination/trigger.ts';
+import type { DispatchResult, DispatchFn } from '../../packages/drift/src/coordination/trigger.ts';
 
 export const name = 'Trigger';
 

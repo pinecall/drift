@@ -5,8 +5,8 @@
  */
 
 import * as http from 'node:http';
-import { NoAuth, TokenAuth, SecretAuth } from '../../packages/drift/src/core/auth.ts';
-import type { DriftAuth, DriftUser } from '../../packages/drift/src/core/auth.ts';
+import { NoAuth, TokenAuth, SecretAuth } from '../../packages/drift/src/auth/auth.ts';
+import type { DriftAuth, DriftUser } from '../../packages/drift/src/auth/auth.ts';
 
 export const name = 'Auth';
 

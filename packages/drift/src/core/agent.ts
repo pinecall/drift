@@ -22,8 +22,8 @@ import { ToolRegistry, defineTool as _defineTool } from '../decorators/tool.ts';
 import { resolvePrompt } from './prompt.ts';
 import { Conversation } from './conversation.ts';
 import { Cache } from './cache.ts';
-import { Window } from './window.ts';
-import { Workspace } from './workspace.ts';
+import { Window } from '../state/window.ts';
+import { Workspace } from '../state/workspace.ts';
 import { Pricing } from './pricing.ts';
 import { Provider } from '../provider/provider.ts';
 import {
@@ -31,9 +31,9 @@ import {
     buildThinkingConfig, listModels,
 } from '../provider/models.ts';
 import { registerBuiltinTools, registerSelectedTools } from '../tools/index.ts';
-import type { DispatchFn } from './trigger.ts';
-import type { WorkspaceChangeEvent } from './workspace.ts';
-import type { TaskBoard } from './taskboard.ts';
+import type { DispatchFn } from '../coordination/trigger.ts';
+import type { WorkspaceChangeEvent } from '../state/workspace.ts';
+import type { TaskBoard } from '../coordination/taskboard.ts';
 import type {
     AgentResult, AgentOptions, ToolSchema, ToolDefinition,
     ModelConfig, Effort, ContentBlock, StreamToolCall,

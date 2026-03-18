@@ -7,9 +7,9 @@
  * No API calls — uses mock dispatch.
  */
 
-import { Pipeline, PipelineManager } from '../../packages/drift/src/core/pipeline.ts';
-import type { DispatchFn, DispatchResult } from '../../packages/drift/src/core/trigger.ts';
-import type { PipelineStep, PipelineContext } from '../../packages/drift/src/core/pipeline.ts';
+import { Pipeline, PipelineManager } from '../../packages/drift/src/coordination/pipeline.ts';
+import type { DispatchFn, DispatchResult } from '../../packages/drift/src/coordination/trigger.ts';
+import type { PipelineStep, PipelineContext } from '../../packages/drift/src/coordination/pipeline.ts';
 
 export const name = 'Pipeline';
 

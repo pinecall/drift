@@ -8,7 +8,7 @@
 import { Agent, Pipeline, PipelineManager } from '../../packages/drift/src/index.ts';
 import type { DispatchFn } from '../../packages/drift/src/index.ts';
 import { Session } from '../../packages/drift/src/core/session.ts';
-import type { PipelineStep } from '../../packages/drift/src/core/pipeline.ts';
+import type { PipelineStep } from '../../packages/drift/src/coordination/pipeline.ts';
 
 export const name = 'Integration — Pipeline';
 

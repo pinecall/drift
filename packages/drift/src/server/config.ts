@@ -9,9 +9,9 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { Agent } from '../core/agent.ts';
-import { Window } from '../core/window.ts';
-import { Trigger } from '../core/trigger.ts';
-import { Pipeline } from '../core/pipeline.ts';
+import { Window } from '../state/window.ts';
+import { Trigger } from '../coordination/trigger.ts';
+import { Pipeline } from '../coordination/pipeline.ts';
 import { DeveloperAgent } from '../agents/developer.ts';
 import { DeveloperLiteAgent } from '../agents/developer-lite.ts';
 import { ResearcherAgent } from '../agents/researcher.ts';

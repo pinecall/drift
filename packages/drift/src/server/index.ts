@@ -17,14 +17,14 @@ import { loadConfig, loadAgents, loadTriggers, loadPipelines, type DriftConfig, 
 import { createWSHandler } from './ws.ts';
 import { detectViteConfig, spawnViteDev } from './vite-dev.ts';
 import type { Agent } from '../core/agent.ts';
-import type { Window } from '../core/window.ts';
-import { Trigger } from '../core/trigger.ts';
-import { TaskBoard } from '../core/taskboard.ts';
-import type { Workspace } from '../core/workspace.ts';
+import type { Window } from '../state/window.ts';
+import { Trigger } from '../coordination/trigger.ts';
+import { TaskBoard } from '../coordination/taskboard.ts';
+import type { Workspace } from '../state/workspace.ts';
 import type { ChildProcess } from 'node:child_process';
-import type { Storage } from '../core/storage.ts';
-import { SQLiteStorage } from '../core/sqlite-storage.ts';
-import type { DriftAuth } from '../core/auth.ts';
+import type { Storage } from '../storage/storage.ts';
+import { SQLiteStorage } from '../storage/sqlite-storage.ts';
+import type { DriftAuth } from '../auth/auth.ts';
 
 // ── MIME types for static serving ───────────────────
 const MIME: Record<string, string> = {

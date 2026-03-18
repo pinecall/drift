@@ -14,7 +14,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { Window, type WindowItem } from '../core/window.ts';
+import { Window, type WindowItem } from '../state/window.ts';
 import { jsx, Fragment, render } from '../jsx-runtime.ts';
 
 // ── Types ───────────────────────────────────────────

@@ -23,17 +23,17 @@ import { WebSocketServer } from 'ws';
 import type { Server as HttpServer, IncomingMessage } from 'node:http';
 import type { Agent } from '../core/agent.ts';
 import { Session } from '../core/session.ts';
-import type { Window } from '../core/window.ts';
-import type { Workspace } from '../core/workspace.ts';
-import type { TaskBoard, Card } from '../core/taskboard.ts';
+import type { Window } from '../state/window.ts';
+import type { Workspace } from '../state/workspace.ts';
+import type { TaskBoard, Card } from '../coordination/taskboard.ts';
 import type { CodebaseWindow } from '../windows/codebase-window.tsx';
 import type { LoadedAgent } from './config.ts';
 import { listModels, getModel } from '../provider/models.ts';
 import type { Effort } from '../types.ts';
-import type { Storage } from '../core/storage.ts';
-import { NoAuth, type DriftAuth, type DriftUser } from '../core/auth.ts';
-import { TriggerManager, type DispatchFn, type DispatchResult, type DispatchOptions } from '../core/trigger.ts';
-import { PipelineManager } from '../core/pipeline.ts';
+import type { Storage } from '../storage/storage.ts';
+import { NoAuth, type DriftAuth, type DriftUser } from '../auth/auth.ts';
+import { TriggerManager, type DispatchFn, type DispatchResult, type DispatchOptions } from '../coordination/trigger.ts';
+import { PipelineManager } from '../coordination/pipeline.ts';
 
 // ── Types ───────────────────────────────────────────
 

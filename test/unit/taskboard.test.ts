@@ -7,7 +7,7 @@
  * No API calls — pure unit tests.
  */
 
-import { TaskBoard, type Card } from '../../packages/drift/src/core/taskboard.ts';
+import { TaskBoard, type Card } from '../../packages/drift/src/coordination/taskboard.ts';
 
 export const name = 'TaskBoard (Kanban)';
 

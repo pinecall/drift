@@ -5,7 +5,7 @@
  * optimistic locking, rendering, and serialization.
  */
 
-import { Workspace, type WorkspaceChangeEvent } from '../../packages/drift/src/core/workspace.ts';
+import { Workspace, type WorkspaceChangeEvent } from '../../packages/drift/src/state/workspace.ts';
 
 export const name = 'Workspace';
 
@@ -218,7 +218,7 @@ export const tests = {
 
     async 'workspace save/load via SQLiteStorage'(assert: any) {
         const fs = await import('node:fs');
-        const { SQLiteStorage } = await import('../../packages/drift/src/core/sqlite-storage.ts');
+        const { SQLiteStorage } = await import('../../packages/drift/src/storage/sqlite-storage.ts');
         const dbPath = '/tmp/drift-workspace-test.db';
         try { fs.unlinkSync(dbPath); } catch {}
         try { fs.unlinkSync(dbPath + '-wal'); } catch {}
@@ -240,7 +240,7 @@ export const tests = {
 
     async 'loadWorkspace returns null for unknown name'(assert: any) {
         const fs = await import('node:fs');
-        const { SQLiteStorage } = await import('../../packages/drift/src/core/sqlite-storage.ts');
+        const { SQLiteStorage } = await import('../../packages/drift/src/storage/sqlite-storage.ts');
         const dbPath = '/tmp/drift-workspace-test2.db';
         try { fs.unlinkSync(dbPath); } catch {}
 

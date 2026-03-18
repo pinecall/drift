@@ -8,10 +8,10 @@
  */
 
 import { Agent } from '../../packages/drift/src/core/agent.ts';
-import { Trigger, TriggerManager } from '../../packages/drift/src/core/trigger.ts';
-import { Workspace } from '../../packages/drift/src/core/workspace.ts';
-import type { DispatchFn, DispatchResult } from '../../packages/drift/src/core/trigger.ts';
-import type { WorkspaceChangeEvent } from '../../packages/drift/src/core/workspace.ts';
+import { Trigger, TriggerManager } from '../../packages/drift/src/coordination/trigger.ts';
+import { Workspace } from '../../packages/drift/src/state/workspace.ts';
+import type { DispatchFn, DispatchResult } from '../../packages/drift/src/coordination/trigger.ts';
+import type { WorkspaceChangeEvent } from '../../packages/drift/src/state/workspace.ts';
 
 export const name = 'Agent Subscribes (Blackboard)';
 

@@ -15,7 +15,7 @@
  *   board.on('card:assigned', ({ card, agent }) => dispatch(agent, ...));
  */
 
-import { Window } from './window.ts';
+import { Window } from '../state/window.ts';
 import type { DispatchFn } from './trigger.ts';
 
 // ── Types ───────────────────────────────────────────

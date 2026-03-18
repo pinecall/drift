@@ -6,9 +6,9 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { SQLiteStorage } from '../../packages/drift/src/core/sqlite-storage.ts';
+import { SQLiteStorage } from '../../packages/drift/src/storage/sqlite-storage.ts';
 import { Conversation } from '../../packages/drift/src/core/conversation.ts';
-import type { SessionData } from '../../packages/drift/src/core/storage.ts';
+import type { SessionData } from '../../packages/drift/src/storage/storage.ts';
 
 export const name = 'Storage';
 
