@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { useWindow, useChat, useThread, useWorkspace } from 'drift/react'
-import { ArrowRight, Trash2, Circle, LayoutGrid, Wifi, WifiOff, Loader2, CheckCircle2, MessageCircle, X, Minus, Send, Maximize2 } from 'lucide-react'
+import { ArrowRight, Trash2, Circle, LayoutGrid, Wifi, WifiOff, Loader2, CheckCircle2, MessageCircle, X, Minus, Send, Maximize2, TrendingUp, Plus, CheckCheck, Trash, Bot } from 'lucide-react'
 import { useDriftContext } from 'drift/react'
 import { T } from '../lib/theme'
 import { StreamingMarkdown } from './StreamingMarkdown'
@@ -574,6 +574,9 @@ export function Board({ sessionId }: { sessionId: string }) {
         })
     }, [])
 
+    const stats = wsState?.stats || { totalCreated: 0, totalCompleted: 0, totalDeleted: 0, agentInteractions: 0 }
+    const lastActivity = (wsState?.lastActivity || []) as string[]
+
     return (
         <div className="flex-1 flex flex-col min-h-0" style={{ background: T.bg }}>
             {/* Header */}
@@ -581,20 +584,39 @@ export function Board({ sessionId }: { sessionId: string }) {
                 <div className="w-7 h-7 rounded-md flex items-center justify-center" style={{ background: T.accent + '12' }}>
                     <LayoutGrid size={13} style={{ color: T.accent }} />
                 </div>
-                <span className="text-[13px]" style={{ color: T.t1 }}>Task Board</span>
+                <span className="text-[13px] font-medium" style={{ color: T.t1 }}>Task Board</span>
                 <span className="text-[11px] rounded-full" style={{ background: T.surfaceAlt, color: T.t3, padding: '2px 10px' }}>
                     {tasks.length} tasks
                 </span>
-                {wsState?.stats && (
-                    <span className="text-[10px]" style={{ color: T.t4 }}>
-                        📊 {wsState.stats.totalCreated || 0} created · {wsState.stats.totalCompleted || 0} done · {wsState.stats.agentInteractions || 0} AI
-                    </span>
-                )}
                 <div className="flex-1" />
                 <div className="flex items-center gap-1.5 text-[11px]" style={{ color: connected ? T.green : T.red }}>
                     {connected ? <Wifi size={12} /> : <WifiOff size={12} />}
                     {connected ? 'Live' : 'Disconnected'}
                 </div>
+            </div>
+
+            {/* Stats Dashboard Strip */}
+            <div className="shrink-0 flex items-center gap-3" style={{ background: T.surface, borderBottom: `1px solid ${T.border}`, padding: '8px 24px' }}>
+                {[
+                    { label: 'Created', value: stats.totalCreated, icon: <Plus size={11} />, color: T.green },
+                    { label: 'Completed', value: stats.totalCompleted, icon: <CheckCheck size={11} />, color: T.cyan },
+                    { label: 'Deleted', value: stats.totalDeleted, icon: <Trash size={11} />, color: T.red },
+                    { label: 'AI Actions', value: stats.agentInteractions, icon: <Bot size={11} />, color: T.purple },
+                ].map(s => (
+                    <div key={s.label} className="flex items-center gap-2 rounded-lg"
+                        style={{ background: s.color + '08', border: `1px solid ${s.color}15`, padding: '5px 12px' }}>
+                        <span style={{ color: s.color }}>{s.icon}</span>
+                        <span className="text-[13px] font-semibold tabular-nums" style={{ color: s.color }}>{s.value}</span>
+                        <span className="text-[10px]" style={{ color: T.t4 }}>{s.label}</span>
+                    </div>
+                ))}
+                <div className="flex-1" />
+                {lastActivity.length > 0 && (
+                    <div className="flex items-center gap-2 text-[10px]" style={{ color: T.t4 }}>
+                        <TrendingUp size={10} />
+                        <span className="truncate" style={{ maxWidth: '250px' }}>{lastActivity[lastActivity.length - 1]}</span>
+                    </div>
+                )}
             </div>
 
             {/* Board columns */}
@@ -607,10 +629,10 @@ export function Board({ sessionId }: { sessionId: string }) {
             {/* Footer */}
             <div className="shrink-0 flex items-center justify-between" style={{ borderTop: `1px solid ${T.border}`, padding: '8px 24px', background: T.surface }}>
                 <span className="text-[10px]" style={{ color: T.t4 }}>
-                    Click to expand · ✨ explain · <MessageCircle size={9} style={{ display: 'inline', verticalAlign: 'middle' }} /> thread · Agent sees all changes
+                    Click to expand · ✨ explain · <MessageCircle size={9} style={{ display: 'inline', verticalAlign: 'middle' }} /> thread · 3 agents active
                 </span>
                 <span className="text-[10px]" style={{ color: T.t4 }}>
-                    {(state?.activity?.length || 0)} actions logged{wsState?.stats ? ` · workspace v${Object.values(wsState.stats).reduce((s: number, v: any) => s + (typeof v === 'number' ? v : 0), 0)}` : ''}
+                    {(state?.activity?.length || 0)} actions · {stats.agentInteractions} AI interactions
                 </span>
             </div>
 

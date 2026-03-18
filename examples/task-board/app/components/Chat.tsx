@@ -1,8 +1,34 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Bot, User, Send, Square, Trash2, Loader2, CheckCircle2, Brain, ChevronDown, ChevronRight } from 'lucide-react'
+import { User, Send, Square, Trash2, Loader2, CheckCircle2, Brain, ChevronDown, ChevronRight } from 'lucide-react'
 import { useChat, type ChatMessage, type MessagePart } from 'drift/react'
-import { T } from '../lib/theme'
+import { T, getAgentStyle, AGENT_COLORS } from '../lib/theme'
 import { StreamingMarkdown } from './StreamingMarkdown'
+
+// ── Agent Tabs ──
+const AGENTS = Object.entries(AGENT_COLORS).map(([name, cfg]) => ({ name, ...cfg }))
+
+function AgentTabs({ selected, onSelect }: { selected: string; onSelect: (name: string) => void }) {
+    return (
+        <div className="flex gap-1" style={{ padding: '0 4px' }}>
+            {AGENTS.map(a => {
+                const active = a.name === selected
+                return (
+                    <button key={a.name} onClick={() => onSelect(a.name)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] transition-all cursor-pointer"
+                        style={{
+                            background: active ? a.color + '18' : 'transparent',
+                            color: active ? a.color : T.t4,
+                            border: active ? `1px solid ${a.color}30` : '1px solid transparent',
+                            fontWeight: active ? 500 : 400,
+                        }}>
+                        <span>{a.icon}</span>
+                        <span>{a.label}</span>
+                    </button>
+                )
+            })}
+        </div>
+    )
+}
 
 // ── Thinking Block ──
 function ThinkingBlock({ isActive, text }: { isActive: boolean; text: string }) {
@@ -42,7 +68,8 @@ function ThinkingBlock({ isActive, text }: { isActive: boolean; text: string }) 
 // ── Tool Chip ──
 const TOOL_COLORS: Record<string, string> = {
     create_task: T.green, move_task: T.amber, update_task: T.accent,
-    delete_task: T.red,
+    delete_task: T.red, plan_project: T.cyan, suggest_priorities: T.cyan,
+    review_task: T.pink, summarize_sprint: T.pink,
 }
 
 function ToolChip({ part }: { part: MessagePart }) {
@@ -62,21 +89,22 @@ function ToolChip({ part }: { part: MessagePart }) {
     )
 }
 
-// ── Message — renders parts in order, just like legacy ──
-function Message({ msg }: { msg: ChatMessage }) {
+// ── Message ──
+function Message({ msg, agentName }: { msg: ChatMessage; agentName: string }) {
     const isUser = msg.role === 'user'
-    const color = isUser ? T.purple : T.accent
+    const agentStyle = getAgentStyle(agentName)
+    const color = isUser ? T.purple : agentStyle.color
     const isLive = msg.status === 'streaming' || msg.status === 'tool'
 
     return (
         <div className="flex gap-3.5">
             <div className="w-7 h-7 rounded-lg shrink-0 flex items-center justify-center mt-0.5"
                 style={{ background: color + '12' }}>
-                {isUser ? <User size={13} style={{ color }} /> : <Bot size={13} style={{ color }} />}
+                {isUser ? <User size={13} style={{ color }} /> : <span style={{ fontSize: '13px' }}>{agentStyle.icon}</span>}
             </div>
             <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-2">
-                    <span className="text-[12px] font-medium" style={{ color }}>{isUser ? 'you' : 'task-agent'}</span>
+                    <span className="text-[12px] font-medium" style={{ color }}>{isUser ? 'you' : agentStyle.label}</span>
                     {isLive && <Loader2 size={10} style={{ color: T.amber }} className="animate-spin" />}
                 </div>
                 <div className="flex flex-col gap-2">
@@ -97,7 +125,7 @@ function Message({ msg }: { msg: ChatMessage }) {
                     ) : msg.content ? (
                         <StreamingMarkdown content={msg.content} isStreaming={false} />
                     ) : isLive ? (
-                        <span className="inline-block w-1.5 h-4 animate-pulse rounded-sm" style={{ background: T.accent }} />
+                        <span className="inline-block w-1.5 h-4 animate-pulse rounded-sm" style={{ background: color }} />
                     ) : null}
                 </div>
             </div>
@@ -107,12 +135,14 @@ function Message({ msg }: { msg: ChatMessage }) {
 
 // ── Main Chat ──
 export function Chat({ sessionId }: { sessionId: string }) {
-    const { messages, send, abort, clear, isStreaming, lastError, activeAgent } = useChat('task-agent', { sessionId })
+    const [selectedAgent, setSelectedAgent] = useState('task-agent')
+    const { messages, send, abort, clear, isStreaming, lastError, activeAgent } = useChat(selectedAgent, { sessionId })
     const [input, setInput] = useState('')
     const bottomRef = useRef<HTMLDivElement>(null)
     const scrollRef = useRef<HTMLDivElement>(null)
     const textareaRef = useRef<HTMLTextAreaElement>(null)
     const isAtBottomRef = useRef(true)
+    const agentStyle = getAgentStyle(activeAgent || selectedAgent)
 
     useEffect(() => {
         if (isAtBottomRef.current) bottomRef.current?.scrollIntoView({ behavior: 'instant' })
@@ -147,10 +177,10 @@ export function Chat({ sessionId }: { sessionId: string }) {
             {/* Header */}
             <div className="flex items-center shrink-0"
                 style={{ background: T.surface, borderBottom: `1px solid ${T.border}`, padding: '0 20px', height: '48px', gap: '12px' }}>
-                <div className="w-7 h-7 rounded-md flex items-center justify-center" style={{ background: T.accent + '12' }}>
-                    <Bot size={13} style={{ color: T.accent }} />
+                <div className="w-7 h-7 rounded-md flex items-center justify-center" style={{ background: agentStyle.color + '12' }}>
+                    <span style={{ fontSize: '14px' }}>{agentStyle.icon}</span>
                 </div>
-                <span className="text-[13px] font-medium" style={{ color: T.t1 }}>@{activeAgent}</span>
+                <span className="text-[13px] font-medium" style={{ color: agentStyle.color }}>@{activeAgent || selectedAgent}</span>
                 <div className="flex items-center gap-1.5">
                     {isStreaming
                         ? <Loader2 size={10} style={{ color: T.amber }} className="animate-spin" />
@@ -164,20 +194,27 @@ export function Chat({ sessionId }: { sessionId: string }) {
                 </button>
             </div>
 
+            {/* Agent Selector */}
+            <div className="shrink-0" style={{ background: T.surface, borderBottom: `1px solid ${T.border}`, padding: '6px 12px' }}>
+                <AgentTabs selected={selectedAgent} onSelect={setSelectedAgent} />
+            </div>
+
             {/* Messages */}
             <div ref={scrollRef} onScroll={handleScroll} className="flex-1 min-h-0 overflow-y-auto"
                 style={{ padding: '24px 20px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 {messages.length === 0 && !isStreaming && (
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                        <Bot size={28} style={{ color: T.t4, marginBottom: '4px' }} />
-                        <div style={{ fontSize: '14px', color: T.t2 }}>Task Board Assistant</div>
+                        <span style={{ fontSize: '28px' }}>{agentStyle.icon}</span>
+                        <div style={{ fontSize: '14px', color: T.t2 }}>{agentStyle.label}</div>
                         <div style={{ fontSize: '12px', color: T.t4, textAlign: 'center', maxWidth: '280px', lineHeight: '1.6' }}>
-                            Ask me to create tasks, plan projects, or manage your board. Try: "Plan a landing page project"
+                            {selectedAgent === 'task-agent' && 'Create, move, update, and delete tasks. Try: "Plan a landing page project"'}
+                            {selectedAgent === 'planner' && 'Break down goals into structured tasks. Try: "Plan an authentication system"'}
+                            {selectedAgent === 'reviewer' && 'Review completed tasks and generate sprint summaries. Try: "Review all done tasks"'}
                         </div>
                     </div>
                 )}
 
-                {messages.map((msg: ChatMessage, i: number) => <Message key={i} msg={msg} />)}
+                {messages.map((msg: ChatMessage, i: number) => <Message key={i} msg={msg} agentName={activeAgent || selectedAgent} />)}
 
                 {lastError && (
                     <div className="text-[12px] rounded-lg px-4 py-3"
@@ -193,7 +230,7 @@ export function Chat({ sessionId }: { sessionId: string }) {
                 <div style={{ borderRadius: '14px', overflow: 'hidden', background: T.surface, border: `1px solid ${T.border}` }}>
                     <textarea ref={textareaRef} rows={1} value={input} autoFocus
                         onChange={e => setInput(e.target.value)} onKeyDown={handleKeyDown}
-                        placeholder={isStreaming ? 'Processing...' : 'Ask about tasks...'}
+                        placeholder={isStreaming ? 'Processing...' : `Ask ${agentStyle.label}...`}
                         style={{ width: '100%', background: 'transparent', fontSize: '13px', padding: '14px 18px 6px', outline: 'none', resize: 'none', overflowY: 'auto', maxHeight: '120px', color: T.t1, border: 'none', fontFamily: 'inherit' }} />
                     <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '4px 14px 10px' }}>
                         {isStreaming ? (

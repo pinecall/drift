@@ -1,7 +1,7 @@
 import { useState, memo } from 'react'
 import { Plus, MessageSquare, Trash2, Bot } from 'lucide-react'
 import { useSessions, type SessionInfo } from 'drift/react'
-import { T } from '../lib/theme'
+import { T, getAgentStyle } from '../lib/theme'
 
 // ── Session Item ──
 const SessionItem = memo(function SessionItem({ session, isActive, onClick, onDelete }: {
@@ -52,8 +52,23 @@ const SessionItem = memo(function SessionItem({ session, isActive, onClick, onDe
                     fontSize: '10px',
                     color: T.t4,
                     marginTop: '2px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
                 }}>
-                    {age}
+                    {session.agentName && (() => {
+                        const style = getAgentStyle(session.agentName)
+                        return (
+                            <span style={{
+                                fontSize: '9px',
+                                color: style.color,
+                                background: style.bg,
+                                padding: '1px 6px',
+                                borderRadius: '4px',
+                            }}>{style.icon} {style.label}</span>
+                        )
+                    })()}
+                    <span>{age}</span>
                 </div>
             </div>
             {hovered && !isActive && (

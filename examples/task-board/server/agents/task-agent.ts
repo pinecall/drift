@@ -5,7 +5,7 @@
  *   - @tool decorators that modify window items → UI reacts in real-time
  *   - Agent reads window state (including all activity) via render()
  *   - Bidirectional: agent changes board, user changes board, both see activity
- *   - Agent actions are tracked alongside user actions in the activity log
+ *   - Workspace stats are updated on every action (shared across agents)
  */
 
 import { Agent, tool } from '../../../../packages/drift/src/index.ts';
@@ -16,6 +16,7 @@ export class TaskAgent extends Agent {
     thinking = false;
     effort = 'low' as const;
     maxIterations = 15;
+    workspaceSlices = ['stats', 'lastActivity'];
 
     prompt = `You are a task management assistant. You help users manage their task board.
 
@@ -24,6 +25,7 @@ IMPORTANT: The full board state is ALREADY in your context inside <task-board>. 
 Pay attention to:
 - Current tasks by status (todo, doing, done)
 - Recent activity — both user (👤) and agent (🤖) actions with timestamps
+- Workspace stats — shared counters across all agents
 
 Available capabilities:
 - Create new tasks with priorities (high/medium/low)
@@ -43,6 +45,24 @@ Keep responses concise and action-oriented.`;
 
     private get board(): TaskBoardWindow {
         return this.window as TaskBoardWindow;
+    }
+
+    /** Update shared workspace stats */
+    private _trackStats(action: 'created' | 'completed' | 'deleted' | 'interaction', detail: string) {
+        if (!this.workspace) return;
+        const stats = this.workspace.select('stats') || {
+            totalCreated: 0, totalCompleted: 0, totalDeleted: 0, agentInteractions: 0,
+        };
+        if (action === 'created') stats.totalCreated++;
+        if (action === 'completed') stats.totalCompleted++;
+        if (action === 'deleted') stats.totalDeleted++;
+        stats.agentInteractions++;
+        this.workspace.setSlice('stats', stats);
+
+        // Push to activity log (keep last 20)
+        const activity = this.workspace.select('lastActivity') || [];
+        activity.push(`[${new Date().toLocaleTimeString()}] 🤖 task-agent: ${detail}`);
+        this.workspace.setSlice('lastActivity', activity.slice(-20));
     }
 
     @tool('Create a new task on the board', {
@@ -72,6 +92,7 @@ Keep responses concise and action-oriented.`;
             taskTitle: title,
             detail: `priority: ${task.priority}`,
         });
+        this._trackStats('created', `Created "${title}"`);
         return { success: true, result: `Created task "${title}" [${id}] with priority ${task.priority}` };
     }
 
@@ -92,6 +113,11 @@ Keep responses concise and action-oriented.`;
             taskId: task_id,
             taskTitle: task.title,
         });
+        if (status === 'done') {
+            this._trackStats('completed', `Completed "${task.title}"`);
+        } else {
+            this._trackStats('interaction', `Moved "${task.title}" ${oldStatus} → ${status}`);
+        }
         return { success: true, result: `Moved "${task.title}" from ${oldStatus} → ${status}` };
     }
 
@@ -121,6 +147,7 @@ Keep responses concise and action-oriented.`;
             taskTitle: task.title,
             detail: Object.keys(patch).join(', '),
         });
+        this._trackStats('interaction', `Updated "${task.title}": ${Object.keys(patch).join(', ')}`);
         return { success: true, result: `Updated "${task.title}": ${Object.keys(patch).join(', ')} changed` };
     }
 
@@ -140,6 +167,7 @@ Keep responses concise and action-oriented.`;
             taskId: task_id,
             taskTitle: title,
         });
+        this._trackStats('deleted', `Deleted "${title}"`);
         return { success: true, result: `Deleted task "${title}" [${task_id}]` };
     }
 }
