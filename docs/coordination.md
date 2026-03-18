@@ -36,6 +36,12 @@
   - [Custom Handler](#custom-handler)
   - [Per-Slice Config](#per-slice-config)
   - [How It Works](#how-it-works-1)
+- [TaskBoard (Kanban)](#taskboard-kanban)
+  - [Card Type](#card-type)
+  - [Dependencies](#dependencies)
+  - [Human Review Gates](#human-review-gates)
+  - [Per-Card Context](#per-card-context)
+  - [WebSocket Protocol (Board)](#websocket-protocol-board)
 - [Architecture](#architecture)
   - [Data Flow](#data-flow)
   - [Where Things Live](#where-things-live)
@@ -58,6 +64,7 @@ Drift's coordination layer lets agents communicate and react to changes without 
 | **Trigger** | React to state changes and dispatch agents | Defined in `triggersDir/`, auto-discovered on startup |
 | **Pipeline** | Sequential agent chains | Defined in `pipelinesDir/`, auto-discovered on startup |
 | **Agent Subscribes** | Agent-centric workspace subscriptions | Declared on Agent via `subscribes`, auto-generates Triggers |
+| **TaskBoard** | Kanban task coordination | `TaskBoard` class, columns, card assignment, dependencies, human review |
 
 All three share the same underlying `DispatchFn` — they're consumers, the WS handler is the provider.
 
@@ -591,6 +598,137 @@ Workspace.setSlice('prices', newData)
 ```
 
 Subscription triggers are named `__subscribe__::{agent}:{slice}` and appear alongside regular triggers in `trigger:list`.
+
+---
+
+## TaskBoard (Kanban)
+
+Kanban-style task coordination with columns, agent assignment, dependencies, human review gates, and per-card context. Extends `Window<Card, BoardState>` — inherits items CRUD, events, persistence, and prompt rendering.
+
+```typescript
+import { TaskBoard, DriftServer } from 'drift';
+
+const board = new TaskBoard();  // default columns
+const server = new DriftServer({ taskboard: board });
+
+// Planner adds cards
+board.addCard({ title: 'Implement auth', assignee: 'coder', priority: 1 });
+board.addCard({ title: 'Write tests', assignee: 'tester', dependsOn: ['card-1'] });
+board.addCard({ title: 'Review PR', requiresHumanReview: true, dependsOn: ['card-2'] });
+```
+
+Default columns: `todo` → `in_progress` → `in_review` → `qa` → `done`
+
+Custom: `new TaskBoard(['backlog', 'sprint', 'review', 'done'])`
+
+### Card Type
+
+```typescript
+interface Card {
+    id: string;                     // auto-generated
+    title: string;
+    description?: string;
+    column: string;                 // current column
+    assignee?: string;              // agent name
+    dependsOn?: string[];           // card IDs that must be DONE first
+    requiresHumanReview?: boolean;  // pause at IN_REVIEW for human approval
+    context?: string;               // accumulated context
+    priority?: number;              // 1 (Critical) - 5 (Lowest), default: 3
+    labels?: string[];
+    createdAt: number;
+    updatedAt: number;
+    result?: string;                // final output when done
+}
+```
+
+**Methods:**
+
+| Method | Description |
+|--------|-------------|
+| `addCard(input)` | Create card in TODO, auto-dispatch if assigned |
+| `moveCard(id, column)` | Move to column, unblock dependents if DONE |
+| `assignCard(id, agent)` | Assign + emit `card:assigned` |
+| `unassignCard(id)` | Remove assignee |
+| `appendContext(id, text)` | Accumulate context text |
+| `setResult(id, result)` | Set output + auto-advance (DONE or IN_REVIEW) |
+| `approveCard(id)` | Move from IN_REVIEW → next column |
+| `rejectCard(id, reason?)` | Move back to TODO with reason in context |
+| `byColumn(col)` | Query cards by column |
+| `byAssignee(agent)` | Query cards by agent |
+| `isBlocked(id)` | Check if dependencies are met |
+| `getReady()` | Get TODO cards with all deps satisfied |
+| `blocked()` / `unblocked()` | Query blocked/unblocked cards |
+
+### Dependencies
+
+```typescript
+board.addCard({ title: 'Backend', assignee: 'coder' });      // card-1
+board.addCard({ title: 'Frontend', dependsOn: ['card-1'] }); // blocked until card-1 DONE
+board.addCard({ title: 'Deploy', dependsOn: ['card-1', 'card-2'] }); // needs both
+```
+
+**Auto-unblock flow:**
+```
+card-1 done → card-2 unblocks → card:assigned emitted → tester dispatched
+                                  (card-1 result is in dispatch message)
+card-2 done → card-3 still blocked (card-1 done but checking all deps)
+              card-3 unblocks when ALL deps done
+```
+
+Dependency results are automatically included in the dispatch message via `<dependency_results>` XML.
+
+### Human Review Gates
+
+```typescript
+board.addCard({ title: 'Review PR', requiresHumanReview: true, assignee: 'coder' });
+
+// Agent finishes work:
+board.setResult(cardId, 'Implementation done');  // → moves to IN_REVIEW (not DONE)
+
+// Human reviews in UI:
+board.approveCard(cardId);                       // → moves to QA
+// or
+board.rejectCard(cardId, 'Missing tests');        // → moves to TODO + reason in context
+```
+
+### Per-Card Context
+
+Each card accumulates context that is passed to the dispatched agent:
+
+```typescript
+board.appendContext(cardId, 'File: src/auth.ts preloaded');  // custom context
+board.appendContext(cardId, 'Previous attempt failed: timeout');  // accumulates
+
+// When agent is dispatched, it receives:
+// 1. Card title + description
+// 2. Priority
+// 3. Results from dependency cards (if any)
+// 4. Card's own accumulated context
+```
+
+### WebSocket Protocol (Board)
+
+**Actions (Client → Server):**
+
+| Action | Payload | Description |
+|--------|---------|-------------|
+| `board:addCard` | `{ card: CardInput }` | Add new card |
+| `board:moveCard` | `{ id, column }` | Move card to column |
+| `board:assignCard` | `{ id, agent }` | Assign to agent |
+| `board:approveCard` | `{ id }` | Human approval |
+| `board:rejectCard` | `{ id, reason? }` | Human rejection |
+| `board:list` | — | Get all cards by column |
+
+**Events (Server → Client):**
+
+| Event | Payload | When |
+|-------|---------|------|
+| `board:changed` | Window change event | Any board mutation |
+| `board:cardAdded` | `{ card }` | Card created (sent to sender) |
+| `board:moved` | `{ card, from, to }` | Card moved between columns |
+| `board:unblocked` | `{ card }` | Card dependencies satisfied |
+| `board:approved` | `{ card }` | Human approved card |
+| `board:rejected` | `{ card, reason }` | Human rejected card |
 
 ---
 

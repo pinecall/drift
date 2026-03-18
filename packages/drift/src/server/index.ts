@@ -19,6 +19,7 @@ import { detectViteConfig, spawnViteDev } from './vite-dev.ts';
 import type { Agent } from '../core/agent.ts';
 import type { Window } from '../core/window.ts';
 import { Trigger } from '../core/trigger.ts';
+import { TaskBoard } from '../core/taskboard.ts';
 import type { Workspace } from '../core/workspace.ts';
 import type { ChildProcess } from 'node:child_process';
 import type { Storage } from '../core/storage.ts';
@@ -48,6 +49,7 @@ export interface DriftServerOptions extends Partial<DriftConfig> {
     storage?: Storage | boolean;
     auth?: DriftAuth;
     workspace?: Workspace<any>;
+    taskboard?: TaskBoard;
     triggersDir?: string;
     pipelinesDir?: string;
 }
@@ -61,6 +63,7 @@ export class DriftServer {
     private _agents: LoadedAgent[] = [];
     private _windows = new Map<string, Window<any, any>>();
     private _workspace: Workspace<any> | null = null;
+    private _taskboard: TaskBoard | null = null;
     private _uiDir: string | null = null;
     private _viteProcess: ChildProcess | null = null;
 
@@ -73,6 +76,7 @@ export class DriftServer {
             this.config = { ...loadConfig(), ...configOrDir };
             this.auth = configOrDir?.auth;
             this._workspace = configOrDir?.workspace || null;
+            this._taskboard = configOrDir?.taskboard || null;
             // storage: false → disabled, Storage instance → use it, undefined/true → SQLite default
             if (configOrDir && configOrDir.storage === false) {
                 this.storage = null;
@@ -129,7 +133,7 @@ export class DriftServer {
         });
 
         // 6. WebSocket handler
-        this._ws = createWSHandler(this._httpServer, this._agents, this._windows, this.storage || undefined, this.auth, this._workspace || undefined);
+        this._ws = createWSHandler(this._httpServer, this._agents, this._windows, this.storage || undefined, this.auth, this._workspace || undefined, this._taskboard || undefined);
 
         // 6b. Load and wire triggers
         const triggers = await loadTriggers(this.config);

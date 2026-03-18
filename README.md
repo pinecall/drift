@@ -73,6 +73,7 @@ console.log(result.cost);   // 0.003241
   - [Trigger](#trigger)
   - [Pipeline](#pipeline)
   - [Agent Subscribes (Blackboard)](#agent-subscribes-blackboard)
+  - [TaskBoard (Kanban)](#taskboard-kanban)
   - [canDispatch (Agent-to-Agent)](#candispatch-agent-to-agent)
   - [Configuration](#configuration-1)
 - [Drift Server](#drift-server)
@@ -1861,6 +1862,35 @@ class ExecutorAgent extends Agent {
 | `subscribes` | `(string \| { slice, cooldown? })[]` | — | Workspace slices to watch |
 | `subscribeCooldown` | `number` | `5000` | Default cooldown (ms) |
 | `onSliceChange()` | `(slice, value, event) => string \| null` | — | Custom message builder |
+
+### TaskBoard (Kanban)
+
+Kanban-style task coordination with columns, card assignment, dependencies, and human review gates:
+
+```typescript
+import { TaskBoard, DriftServer } from 'drift';
+
+const board = new TaskBoard();  // default: TODO → IN_PROGRESS → IN_REVIEW → QA → DONE
+
+// Planner adds cards — auto-dispatches assigned agent
+board.addCard({ title: 'Implement auth', assignee: 'coder', priority: 1 });
+board.addCard({ title: 'Write tests', assignee: 'tester', dependsOn: ['card-1'] });
+board.addCard({ title: 'Review PR', requiresHumanReview: true, dependsOn: ['card-2'] });
+
+const server = new DriftServer({ taskboard: board });
+```
+
+**Auto-workflow:**
+1. Card-1 assigned to `coder` → auto-dispatched → moves to IN_PROGRESS
+2. `coder` finishes → `setResult()` → Card-1 moves to DONE
+3. Card-2 unblocks → `tester` auto-dispatched with Card-1's output as context
+4. Card-3 unblocks → pauses at IN_REVIEW for human approval via `board:approveCard`
+
+**Key methods:** `addCard()`, `moveCard()`, `assignCard()`, `approveCard()`, `rejectCard()`, `appendContext()`, `setResult()`, `isBlocked()`, `getReady()`, `byColumn()`, `byAssignee()`
+
+**WebSocket actions:** `board:addCard`, `board:moveCard`, `board:assignCard`, `board:approveCard`, `board:rejectCard`, `board:list`
+
+See [docs/coordination.md](./docs/coordination.md#taskboard-kanban) for the full reference.
 
 ### canDispatch (Agent-to-Agent)
 

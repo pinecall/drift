@@ -25,6 +25,7 @@ import type { Agent } from '../core/agent.ts';
 import { Session } from '../core/session.ts';
 import type { Window } from '../core/window.ts';
 import type { Workspace } from '../core/workspace.ts';
+import type { TaskBoard, Card } from '../core/taskboard.ts';
 import type { CodebaseWindow } from '../windows/codebase-window.tsx';
 import type { LoadedAgent } from './config.ts';
 import { listModels, getModel } from '../provider/models.ts';
@@ -51,6 +52,7 @@ export function createWSHandler(
     storage?: Storage,
     auth?: DriftAuth,
     workspace?: Workspace<any>,
+    taskboard?: TaskBoard,
 ) {
     const wss = new WebSocketServer({ server: httpServer });
     const clients = new Set<WebSocket>();
@@ -215,6 +217,48 @@ export function createWSHandler(
         }
     }
 
+    // ── TaskBoard event wiring ─────────────────────
+
+    if (taskboard) {
+        // Inject dispatch function
+        taskboard._dispatchFn = dispatch;
+
+        // Inject taskboard into agents
+        for (const { agent } of agents) {
+            agent.taskboard = taskboard;
+        }
+
+        // Auto-dispatch on card assignment
+        taskboard.on('card:assigned', async ({ card, agent: agentName }: { card: Card; agent: string }) => {
+            const message = taskboard.buildDispatchMessage(card);
+            try {
+                taskboard.moveCard(card.id, 'in_progress');
+                const result = await dispatch(agentName, message, {
+                    source: `board:${card.id}`,
+                    silent: false,
+                });
+                if (result?.text) {
+                    taskboard.setResult(card.id, result.text);
+                }
+            } catch (err: any) {
+                taskboard.appendContext(card.id, `\u274c Error: ${err.message}`);
+                taskboard.moveCard(card.id, 'todo');
+            }
+        });
+
+        // Broadcast all board changes
+        taskboard.on('change', (event: any) => {
+            broadcast({ event: 'board:changed', ...event });
+        });
+
+        // Broadcast specific board events
+        for (const evt of ['card:moved', 'card:unblocked', 'card:approved', 'card:rejected']) {
+            taskboard.on(evt, (data: any) => {
+                broadcast({ event: `board:${evt.replace('card:', '')}`, ...data });
+            });
+        }
+    }
+
     // ── Connection handler ──────────────────────────
 
     wss.on('connection', async (ws: WebSocket, req: IncomingMessage) => {
@@ -268,6 +312,16 @@ export function createWSHandler(
                 action: 'sync',
                 state: workspace.state,
                 versions: workspace.versions,
+            });
+        }
+
+        // Send current board state
+        if (taskboard) {
+            send(ws, {
+                event: 'board:changed',
+                action: 'sync',
+                items: taskboard.list(),
+                state: taskboard.state,
             });
         }
 
@@ -674,6 +728,56 @@ export function createWSHandler(
             case 'workspace:setSlice': {
                 if (workspace && msg.slice !== undefined && msg.value !== undefined) {
                     workspace.setSlice(msg.slice, msg.value);
+                }
+                break;
+            }
+
+            // ── TaskBoard ──────────────────────────────
+
+            case 'board:addCard': {
+                if (taskboard && msg.card) {
+                    const card = taskboard.addCard(msg.card);
+                    send(ws, { event: 'board:cardAdded', card });
+                }
+                break;
+            }
+
+            case 'board:moveCard': {
+                if (taskboard && msg.id && msg.column) {
+                    taskboard.moveCard(msg.id, msg.column);
+                }
+                break;
+            }
+
+            case 'board:assignCard': {
+                if (taskboard && msg.id && msg.agent) {
+                    taskboard.assignCard(msg.id, msg.agent);
+                }
+                break;
+            }
+
+            case 'board:approveCard': {
+                if (taskboard && msg.id) {
+                    taskboard.approveCard(msg.id);
+                }
+                break;
+            }
+
+            case 'board:rejectCard': {
+                if (taskboard && msg.id) {
+                    taskboard.rejectCard(msg.id, msg.reason);
+                }
+                break;
+            }
+
+            case 'board:list': {
+                if (taskboard) {
+                    const columns = taskboard.state.columns;
+                    const board: Record<string, Card[]> = {};
+                    for (const col of columns) {
+                        board[col] = taskboard.byColumn(col);
+                    }
+                    send(ws, { event: 'board:list', board, columns });
                 }
                 break;
             }

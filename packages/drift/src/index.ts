@@ -13,6 +13,7 @@ export { Window, type WindowItem, type WindowChangeEvent, type ChangeAction } fr
 export { Workspace, type WorkspaceChangeEvent, type WorkspaceAction } from './core/workspace.ts';
 export { Trigger, TriggerManager, type DispatchFn, type DispatchResult, type DispatchOptions } from './core/trigger.ts';
 export { Pipeline, PipelineManager, type PipelineStep, type PipelineContext, type PipelineResult, type PipelineStepResult } from './core/pipeline.ts';
+export { TaskBoard, DEFAULT_COLUMNS, type Card, type BoardState, type CardInput, type Column } from './core/taskboard.ts';
 export { MCP, type MCPServerConfig } from './core/mcp.ts';
 export { Pricing } from './core/pricing.ts';
 export { Provider } from './provider/provider.ts';

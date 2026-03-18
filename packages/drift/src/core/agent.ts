@@ -33,6 +33,7 @@ import {
 import { registerBuiltinTools, registerSelectedTools } from '../tools/index.ts';
 import type { DispatchFn } from './trigger.ts';
 import type { WorkspaceChangeEvent } from './workspace.ts';
+import type { TaskBoard } from './taskboard.ts';
 import type {
     AgentResult, AgentOptions, ToolSchema, ToolDefinition,
     ModelConfig, Effort, ContentBlock, StreamToolCall,
@@ -151,6 +152,9 @@ export class Agent extends EventEmitter {
      * If not defined, a default message with the slice name and value is used.
      */
     onSliceChange?(slice: string, value: any, event: WorkspaceChangeEvent): string | null;
+
+    /** Shared TaskBoard — injected by DriftServer for Kanban coordination. */
+    taskboard?: TaskBoard;
 
     /** Built-in tools to register. Categories: 'edit' | 'filesystem' | 'shell' | 'all', or individual names. Empty = none */
     builtinTools: string[] = [];
