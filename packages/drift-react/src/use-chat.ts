@@ -61,6 +61,9 @@ export function useChat(agentName: string, options?: { sessionId?: string }): Us
     const [config, setConfig] = useState<AgentConfig | null>(null);
     const [activeAgent, setActiveAgent] = useState(agentName);
 
+    // ── Ref-based agent tracking (always current, no stale closures) ──
+    const activeAgentRef = useRef(agentName);
+
     // Use provided sessionId or generate stable one per hook instance
     const sessionIdRef = useRef<string>('');
     if (!sessionIdRef.current) {
@@ -72,10 +75,11 @@ export function useChat(agentName: string, options?: { sessionId?: string }): Us
     }
     // If external sessionId changes, update the ref
     const sessionId = options?.sessionId || sessionIdRef.current;
+    const sessionIdLiveRef = useRef(sessionId);
+    sessionIdLiveRef.current = sessionId;
 
     // If external sessionId changes (e.g. switching session), clear local messages and request history
     const prevSessionIdRef = useRef(sessionId);
-    const prevAgentRef = useRef(agentName);
     useEffect(() => {
         if (sessionId !== prevSessionIdRef.current) {
             prevSessionIdRef.current = sessionId;
@@ -83,14 +87,16 @@ export function useChat(agentName: string, options?: { sessionId?: string }): Us
             setMessages([]);
             setIsStreaming(false);
             setLastError(null);
-            wsSend({ action: 'chat:history', agent: activeAgent, sessionId });
+            wsSend({ action: 'chat:history', agent: activeAgentRef.current, sessionId });
         }
-    }, [sessionId, activeAgent, wsSend]);
+    }, [sessionId, wsSend]);
 
-    // If agentName prop changes (e.g. user switched agent tab), sync activeAgent
+    // If agentName prop changes (e.g. user switched agent tab), sync everything
+    const prevAgentRef = useRef(agentName);
     useEffect(() => {
         if (agentName !== prevAgentRef.current) {
             prevAgentRef.current = agentName;
+            activeAgentRef.current = agentName;
             setActiveAgent(agentName);
             setMessages([]);
             setIsStreaming(false);
@@ -112,11 +118,12 @@ export function useChat(agentName: string, options?: { sessionId?: string }): Us
     }
 
     // Subscribe to chat events for this session
+    // Uses refs for agent/session so the closure is always current — no teardown on agent switch
     useEffect(() => {
         return subscribe((event) => {
             // Filter by sessionId if present, fall back to agent name
-            if (event.sessionId && event.sessionId !== sessionId) return;
-            if (!event.sessionId && event.agent !== activeAgent) return;
+            if (event.sessionId && event.sessionId !== sessionIdLiveRef.current) return;
+            if (!event.sessionId && event.agent !== activeAgentRef.current) return;
 
             switch (event.event) {
                 // ─── New assistant turn ──────────────
@@ -242,11 +249,14 @@ export function useChat(agentName: string, options?: { sessionId?: string }): Us
 
                 case 'chat:swapped':
                     if (event.config) setConfig(event.config);
-                    if (event.agent) setActiveAgent(event.agent);
+                    if (event.agent) {
+                        activeAgentRef.current = event.agent;
+                        setActiveAgent(event.agent);
+                    }
                     break;
             }
         });
-    }, [subscribe, sessionId, activeAgent]);
+    }, [subscribe]);  // Only depends on subscribe — refs keep agent/session current
 
     // Sync initial config from agents list
     useEffect(() => {
@@ -265,8 +275,8 @@ export function useChat(agentName: string, options?: { sessionId?: string }): Us
         }]);
         setIsStreaming(true);
         setLastError(null);
-        wsSend({ action: 'chat:send', agent: activeAgent, sessionId, message: text });
-    }, [wsSend, activeAgent, sessionId]);
+        wsSend({ action: 'chat:send', agent: activeAgentRef.current, sessionId: sessionIdLiveRef.current, message: text });
+    }, [wsSend]);
 
     const nudge = useCallback((prompt: string, options?: NudgeOptions) => {
         // Add nudge as a user message (visually tagged)
@@ -280,34 +290,34 @@ export function useChat(agentName: string, options?: { sessionId?: string }): Us
         setLastError(null);
         wsSend({
             action: 'chat:nudge',
-            agent: activeAgent,
-            sessionId,
+            agent: activeAgentRef.current,
+            sessionId: sessionIdLiveRef.current,
             prompt,
             ...(options?.model && { model: options.model }),
             ...(options?.ephemeral && { ephemeral: true }),
             ...(options?.system && { system: options.system }),
         });
-    }, [wsSend, activeAgent, sessionId]);
+    }, [wsSend]);
 
     const abort = useCallback(() => {
-        wsSend({ action: 'chat:abort', agent: activeAgent, sessionId });
-    }, [wsSend, activeAgent, sessionId]);
+        wsSend({ action: 'chat:abort', agent: activeAgentRef.current, sessionId: sessionIdLiveRef.current });
+    }, [wsSend]);
 
     const clear = useCallback(() => {
-        wsSend({ action: 'chat:clear', agent: activeAgent, sessionId });
-    }, [wsSend, activeAgent, sessionId]);
+        wsSend({ action: 'chat:clear', agent: activeAgentRef.current, sessionId: sessionIdLiveRef.current });
+    }, [wsSend]);
 
     const requestHistory = useCallback(() => {
-        wsSend({ action: 'chat:history', agent: activeAgent, sessionId });
-    }, [wsSend, activeAgent, sessionId]);
+        wsSend({ action: 'chat:history', agent: activeAgentRef.current, sessionId: sessionIdLiveRef.current });
+    }, [wsSend]);
 
     const swap = useCallback((newAgentName: string) => {
-        wsSend({ action: 'chat:swap', agent: newAgentName, sessionId });
-    }, [wsSend, sessionId]);
+        wsSend({ action: 'chat:swap', agent: newAgentName, sessionId: sessionIdLiveRef.current });
+    }, [wsSend]);
 
     const updateSettings = useCallback((patch: Partial<Pick<AgentConfig, 'model' | 'thinking' | 'effort' | 'webSearch'>>) => {
-        wsSend({ action: 'chat:settings', agent: activeAgent, ...patch });
-    }, [wsSend, activeAgent]);
+        wsSend({ action: 'chat:settings', agent: activeAgentRef.current, ...patch });
+    }, [wsSend]);
 
     return {
         messages,
