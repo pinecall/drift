@@ -1,43 +1,8 @@
-import { useState, useRef, useEffect, useCallback, memo } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { Bot, User, Send, Square, Trash2, Loader2, CheckCircle2, Brain, ChevronDown, ChevronRight } from 'lucide-react'
 import { useChat, type ChatMessage, type MessagePart } from 'drift/react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { T } from '../lib/theme'
-
-// ── Streaming Markdown ──
-
-const StreamingMarkdown = memo(function StreamingMarkdown({ content, isStreaming }: { content: string; isStreaming: boolean }) {
-    return (
-        <div className="text-[13px] leading-relaxed" style={{ color: T.t2 }}>
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
-                code({ className, children }: any) {
-                    const match = /language-(\w+)/.exec(className || '')
-                    const text = String(children).replace(/\n$/, '')
-                    if (text.includes('\n') || match) {
-                        return <SyntaxHighlighter style={oneDark} language={match?.[1] || 'text'} PreTag="div"
-                            customStyle={{ margin: '8px 0', borderRadius: '8px', fontSize: '12px', border: `1px solid ${T.border}`, background: T.surface }}>
-                            {text}
-                        </SyntaxHighlighter>
-                    }
-                    return <code style={{ background: T.surface, color: T.t1, padding: '2px 6px', borderRadius: '4px', fontSize: '12px', border: `1px solid ${T.border}` }}>{children}</code>
-                },
-                p: ({ children }: any) => <p className="mb-2 last:mb-0">{children}</p>,
-                ul: ({ children }: any) => <ul className="list-disc list-inside mb-2 space-y-0.5">{children}</ul>,
-                ol: ({ children }: any) => <ol className="list-decimal list-inside mb-2 space-y-0.5">{children}</ol>,
-                li: ({ children }: any) => <li className="text-[13px]">{children}</li>,
-                h1: ({ children }: any) => <h1 className="text-[16px] font-semibold mt-3 mb-2" style={{ color: T.t1 }}>{children}</h1>,
-                h2: ({ children }: any) => <h2 className="text-[15px] font-semibold mt-3 mb-2" style={{ color: T.t1 }}>{children}</h2>,
-                h3: ({ children }: any) => <h3 className="text-[14px] font-semibold mt-2 mb-1.5" style={{ color: T.t1 }}>{children}</h3>,
-                blockquote: ({ children }: any) => <blockquote style={{ borderLeft: `2px solid ${T.border}`, paddingLeft: '12px', margin: '8px 0', color: T.t3 }}>{children}</blockquote>,
-                a: ({ href, children }: any) => <a href={href} style={{ color: T.accent }} className="hover:underline" target="_blank" rel="noreferrer">{children}</a>,
-            }}>{content}</ReactMarkdown>
-            {isStreaming && <span className="inline-block w-1.5 h-4 ml-0.5 animate-pulse rounded-sm align-middle" style={{ background: T.accent }} />}
-        </div>
-    )
-})
+import { StreamingMarkdown } from './StreamingMarkdown'
 
 // ── Thinking Block ──
 function ThinkingBlock({ isActive, text }: { isActive: boolean; text: string }) {

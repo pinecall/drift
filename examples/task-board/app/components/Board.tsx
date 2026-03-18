@@ -3,7 +3,7 @@ import { useWindow, useChat, useThread } from 'drift/react'
 import { ArrowRight, Trash2, Circle, LayoutGrid, Wifi, WifiOff, Loader2, CheckCircle2, MessageCircle, X, Minus, Send, Maximize2 } from 'lucide-react'
 import { useDriftContext } from 'drift/react'
 import { T } from '../lib/theme'
-import ReactMarkdown from 'react-markdown'
+import { StreamingMarkdown } from './StreamingMarkdown'
 
 // ── Types matching the server TaskItem ──
 interface TaskItem {
@@ -185,27 +185,21 @@ function ThreadPanel({ task, sessionId, onClose, index = 0 }: { task: TaskItem; 
                             color: T.t1,
                         }}>
                             {msg.role === 'assistant' ? (
-                                <div className="prose-thread">
+                                <div>
                                     {msg.parts?.map((part, j) => {
                                         if (part.type === 'text') {
-                                            return <ReactMarkdown key={j}>{part.content || ''}</ReactMarkdown>
+                                            const isLastPart = j === (msg.parts?.length || 0) - 1
+                                            return <StreamingMarkdown key={j} content={part.content || ''} isStreaming={msg.status === 'streaming' && isLastPart} compact />
                                         }
                                         if (part.type === 'thinking' && part.content) {
                                             return (
                                                 <div key={j} className="text-[10px] italic" style={{ color: T.t4, marginBottom: '4px' }}>
-                                                    {part.content.slice(0, 100)}...
+                                                    💭 {part.content.slice(0, 120)}...
                                                 </div>
                                             )
                                         }
                                         return null
                                     })}
-                                    {msg.status === 'streaming' && (
-                                        <span className="inline-flex gap-0.5 ml-1">
-                                            {[0, 100, 200].map(d => (
-                                                <span key={d} className="w-1 h-1 rounded-full animate-bounce" style={{ background: T.accent, animationDelay: `${d}ms` }} />
-                                            ))}
-                                        </span>
-                                    )}
                                 </div>
                             ) : (
                                 <span>{msg.content}</span>
@@ -315,8 +309,8 @@ function TaskCard({ task, onMove, onDelete, onCyclePriority, onExplain, onThread
                     }}>
                     {/* ✨ Explain — nudge with haiku */}
                     <button onClick={e => { e.stopPropagation(); onExplain(task) }}
-                        className="flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] cursor-pointer transition-colors"
-                        style={{ color: T.t4 }}
+                        className="flex items-center gap-1 px-2 py-1 rounded-md text-[13px] cursor-pointer transition-colors"
+                        style={{ color: T.t4, marginRight: '4px' }}
                         onMouseEnter={e => { e.currentTarget.style.color = T.purple; e.currentTarget.style.background = T.purple + '10' }}
                         onMouseLeave={e => { e.currentTarget.style.color = T.t4; e.currentTarget.style.background = 'transparent' }}
                         title="Quick explanation">
