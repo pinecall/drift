@@ -95,8 +95,10 @@ export function useChat(agentName: string, options?: { sessionId?: string }): Us
             setMessages([]);
             setIsStreaming(false);
             setLastError(null);
+            // Request history for the new agent so conversations restore
+            wsSend({ action: 'chat:history', agent: agentName, sessionId });
         }
-    }, [agentName]);
+    }, [agentName, wsSend, sessionId]);
 
     // ── Helper: update last assistant message ──
     function updateLast(updater: (msg: ChatMessage) => ChatMessage) {
