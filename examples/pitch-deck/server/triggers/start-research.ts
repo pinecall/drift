@@ -32,6 +32,9 @@ export class StartResearchTrigger extends Trigger {
 Use save_research with slideId "${slide.id}" to save your findings. Keep it to 3-4 bullet points.`,
                 { streamTo: { itemId: slide.id, field: 'research' } }
             );
+
+            // Advance phase AFTER researcher completes
+            this.window?.update(slide.id, { phase: 'writing' });
         },
     };
 }

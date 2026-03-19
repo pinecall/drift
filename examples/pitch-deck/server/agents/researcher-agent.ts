@@ -41,7 +41,6 @@ IMPORTANT: After researching, use save_research with the exact slideId provided 
 
         deck.update(slideId, {
             research,
-            phase: 'writing',
             agent: undefined,
         });
         deck.logActivity(`🔍 Researcher completed: "${slide.title}"`);

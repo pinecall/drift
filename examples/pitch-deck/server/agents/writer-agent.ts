@@ -41,7 +41,6 @@ IMPORTANT: After writing, use save_content with the exact slideId provided to yo
 
         deck.update(slideId, {
             content,
-            phase: 'polishing',
             agent: undefined,
         });
         deck.logActivity(`✍️ Writer completed: "${slide.title}"`);

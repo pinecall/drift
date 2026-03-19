@@ -41,7 +41,6 @@ IMPORTANT: After polishing, use finalize_slide with the exact slideId provided t
 
         deck.update(slideId, {
             finalContent,
-            phase: 'done',
             agent: undefined,
         });
         deck.logActivity(`🎨 Polisher finalized: "${slide.title}"`);

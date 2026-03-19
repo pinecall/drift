@@ -29,6 +29,9 @@ Brief: ${slide.brief}
 Use save_content with slideId "${slide.id}" to save your written content.`,
                 { streamTo: { itemId: slide.id, field: 'content' } }
             );
+
+            // Advance phase AFTER writer completes
+            this.window?.update(slide.id, { phase: 'polishing' });
         },
     };
 }

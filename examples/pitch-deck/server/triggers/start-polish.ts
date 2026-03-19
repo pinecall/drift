@@ -30,6 +30,20 @@ ${slide.research}
 Use finalize_slide with slideId "${slide.id}" to save the polished version.`,
                 { streamTo: { itemId: slide.id, field: 'finalContent' } }
             );
+
+            // Advance phase AFTER polisher completes
+            this.window?.update(slide.id, { phase: 'done' });
+
+            // Check if all slides are done
+            if (this.workspace) {
+                const allSlides = this.window?.list() || [];
+                const allDone = allSlides.every((s: any) => s.phase === 'done');
+                const completedSlides = allSlides.filter((s: any) => s.phase === 'done').length;
+                this.workspace.setState({
+                    completedSlides,
+                    status: allDone ? 'done' : 'building',
+                } as any);
+            }
         },
     };
 }
