@@ -2,7 +2,7 @@
  * Unit Tests — Agent Subscribes (Blackboard pattern via Trigger)
  * 
  * Tests that agent.subscribes auto-generates Trigger instances
- * that dispatch the agent when subscribed workspace slices change.
+ * that dispatch the agent when subscribed workspace windows change.
  * 
  * No API calls — uses mock dispatch + Trigger._evaluate().
  */
@@ -10,8 +10,8 @@
 import { Agent } from '../../packages/drift/src/core/agent.ts';
 import { Trigger, TriggerManager } from '../../packages/drift/src/coordination/trigger.ts';
 import { Workspace } from '../../packages/drift/src/state/workspace.ts';
+import { Window } from '../../packages/drift/src/state/window.ts';
 import type { DispatchFn, DispatchResult } from '../../packages/drift/src/coordination/trigger.ts';
-import type { WorkspaceChangeEvent } from '../../packages/drift/src/state/workspace.ts';
 
 export const name = 'Agent Subscribes (Blackboard)';
 
@@ -30,39 +30,35 @@ function mockDispatch(): { fn: DispatchFn; calls: { agent: string; message: stri
 function createSubscriptionTrigger(
     agentName: string,
     agent: Agent,
-    sliceName: string,
+    windowName: string,
     cooldown: number,
     dispatchFn: DispatchFn,
     workspace?: Workspace,
 ): Trigger {
     const trigger = new Trigger();
-    trigger.name = `__subscribe__:${agentName}:${sliceName}`;
-    trigger.watch = 'workspace';
+    trigger.name = `__subscribe__:${agentName}:${windowName}`;
+    trigger.watch = 'window';
     trigger.cooldown = cooldown;
     trigger.workspace = workspace;
     trigger._dispatchFn = dispatchFn;
 
     trigger.condition = (event: any) => {
-        if (event.action === 'setSlice') return event.slice === sliceName;
-        if (event.action === 'setState' && event.patch) return sliceName in event.patch;
-        return false;
+        return event.windowName === windowName || event.name === windowName;
     };
 
     trigger.run = async (event: any) => {
-        const value = event.state?.[sliceName];
         let message: string | null;
 
-        if (agent.onSliceChange) {
-            message = agent.onSliceChange(sliceName, value, event);
+        if (agent.onWindowChange) {
+            message = agent.onWindowChange(windowName, event);
         } else {
-            const preview = typeof value === 'string' ? value.slice(0, 500)
-                : JSON.stringify(value, null, 2)?.slice(0, 500) || '';
-            message = `Workspace slice "${sliceName}" was updated:\n\n${preview}`;
+            const preview = JSON.stringify(event, null, 2)?.slice(0, 500) || '';
+            message = `Window "${windowName}" was updated:\n\n${preview}`;
         }
 
         if (message !== null) {
             await dispatchFn(agentName, message, {
-                source: `subscribe:${agentName}:${sliceName}`,
+                source: `subscribe:${agentName}:${windowName}`,
                 silent: false,
             });
         }
@@ -74,7 +70,7 @@ function createSubscriptionTrigger(
 // ── Tests ──
 
 export const tests = {
-    async 'Agent with subscribes triggers dispatch on slice change'(assert: any) {
+    async 'Agent with subscribes triggers dispatch on window change'(assert: any) {
         class MarketAgent extends Agent {
             model = 'haiku';
             subscribes = ['prices'];
@@ -82,30 +78,32 @@ export const tests = {
 
         const agent = new MarketAgent();
         const { fn, calls } = mockDispatch();
-        const ws = new Workspace('test', { prices: { btc: 60000 }, signals: [] });
+        const ws = new Workspace('test', { counter: 0 });
+        const pricesWindow = new Window();
+        ws.addWindow('prices', pricesWindow);
 
         const trigger = createSubscriptionTrigger('market', agent, 'prices', 0, fn, ws);
 
-        // Simulate workspace change
+        // Simulate window change event
         const event = {
-            action: 'setSlice' as const,
-            slice: 'prices',
-            state: { prices: { btc: 67000 }, signals: [] },
-            versions: { prices: 1, signals: 0 },
+            windowName: 'prices',
+            action: 'add',
+            items: [{ id: 'btc', price: 67000 }],
+            state: {},
         };
 
-        const fired = await trigger._evaluate('workspace', event);
+        const fired = await trigger._evaluate('window', event);
         assert.ok(fired, 'trigger fired');
 
         // Wait for async dispatch
         await new Promise(r => setTimeout(r, 50));
         assert.equal(calls.length, 1, 'dispatch called once');
         assert.equal(calls[0].agent, 'market', 'dispatched to correct agent');
-        assert.includes(calls[0].message, 'prices', 'message mentions slice');
+        assert.includes(calls[0].message, 'prices', 'message mentions window');
         assert.includes(calls[0].source!, 'subscribe:market:prices', 'source is correct');
     },
 
-    async 'Agent subscribe ignores unrelated slices'(assert: any) {
+    async 'Agent subscribe ignores unrelated windows'(assert: any) {
         class MarketAgent extends Agent {
             model = 'haiku';
             subscribes = ['prices'];
@@ -115,27 +113,27 @@ export const tests = {
         const { fn, calls } = mockDispatch();
         const trigger = createSubscriptionTrigger('market', agent, 'prices', 0, fn);
 
-        // Simulate change to 'signals' (not subscribed)
+        // Simulate change to 'signals' window (not subscribed)
         const event = {
-            action: 'setSlice' as const,
-            slice: 'signals',
-            state: { prices: {}, signals: ['BUY'] },
-            versions: { prices: 0, signals: 1 },
+            windowName: 'signals',
+            action: 'add',
+            items: [{ id: 'signal1' }],
+            state: {},
         };
 
-        const fired = await trigger._evaluate('workspace', event);
+        const fired = await trigger._evaluate('window', event);
         assert.ok(!fired, 'trigger did not fire');
         assert.equal(calls.length, 0, 'no dispatch');
     },
 
-    async 'Custom onSliceChange overrides message'(assert: any) {
+    async 'Custom onWindowChange overrides message'(assert: any) {
         class ExecutorAgent extends Agent {
             model = 'haiku';
             subscribes = ['signals'];
 
-            onSliceChange(slice: string, value: any): string | null {
-                if (value?.action === 'BUY') {
-                    return `Execute BUY for ${value.symbol}`;
+            onWindowChange(windowName: string, event: any): string | null {
+                if (event.items?.[0]?.action === 'BUY') {
+                    return `Execute BUY for ${event.items[0].symbol}`;
                 }
                 return null;
             }
@@ -147,24 +145,24 @@ export const tests = {
 
         // Trigger with BUY signal
         const event = {
-            action: 'setSlice' as const,
-            slice: 'signals',
-            state: { signals: { action: 'BUY', symbol: 'BTC' } },
-            versions: { signals: 1 },
+            windowName: 'signals',
+            action: 'add',
+            items: [{ id: 's1', action: 'BUY', symbol: 'BTC' }],
+            state: {},
         };
 
-        await trigger._evaluate('workspace', event);
+        await trigger._evaluate('window', event);
         await new Promise(r => setTimeout(r, 50));
         assert.equal(calls.length, 1, 'dispatch called');
         assert.equal(calls[0].message, 'Execute BUY for BTC', 'custom message used');
     },
 
-    async 'onSliceChange returning null skips dispatch'(assert: any) {
+    async 'onWindowChange returning null skips dispatch'(assert: any) {
         class FilterAgent extends Agent {
             model = 'haiku';
             subscribes = ['signals'];
 
-            onSliceChange(): string | null {
+            onWindowChange(): string | null {
                 return null;  // always skip
             }
         }
@@ -174,13 +172,13 @@ export const tests = {
         const trigger = createSubscriptionTrigger('filter', agent, 'signals', 0, fn);
 
         const event = {
-            action: 'setSlice' as const,
-            slice: 'signals',
-            state: { signals: 'anything' },
-            versions: { signals: 1 },
+            windowName: 'signals',
+            action: 'add',
+            items: [],
+            state: {},
         };
 
-        await trigger._evaluate('workspace', event);
+        await trigger._evaluate('window', event);
         await new Promise(r => setTimeout(r, 50));
         assert.equal(calls.length, 0, 'dispatch skipped');
     },
@@ -197,27 +195,27 @@ export const tests = {
         const trigger = createSubscriptionTrigger('test', agent, 'data', 60_000, fn);
 
         const event = {
-            action: 'setSlice' as const,
-            slice: 'data',
-            state: { data: 'v1' },
-            versions: { data: 1 },
+            windowName: 'data',
+            action: 'add',
+            items: [{ id: 'v1' }],
+            state: {},
         };
 
         // First fire
-        const fired1 = await trigger._evaluate('workspace', event);
+        const fired1 = await trigger._evaluate('window', event);
         assert.ok(fired1, 'first fire');
 
         // Second fire (within cooldown)
-        const fired2 = await trigger._evaluate('workspace', { ...event, state: { data: 'v2' } });
+        const fired2 = await trigger._evaluate('window', { ...event, items: [{ id: 'v2' }] });
         assert.ok(!fired2, 'blocked by cooldown');
     },
 
-    async 'Per-slice cooldown config works'(assert: any) {
+    async 'Per-window cooldown config works'(assert: any) {
         class ConfigAgent extends Agent {
             model = 'haiku';
             subscribes = [
-                { slice: 'fast', cooldown: 0 },
-                { slice: 'slow', cooldown: 60_000 },
+                { window: 'fast', cooldown: 0 },
+                { window: 'slow', cooldown: 60_000 },
             ];
         }
 
@@ -228,42 +226,20 @@ export const tests = {
         const fastTrigger = createSubscriptionTrigger('test', agent, 'fast', 0, fn1);
         const slowTrigger = createSubscriptionTrigger('test', agent, 'slow', 60_000, fn2);
 
-        const fastEvent = { action: 'setSlice' as const, slice: 'fast', state: { fast: 1 }, versions: { fast: 1 } };
-        const slowEvent = { action: 'setSlice' as const, slice: 'slow', state: { slow: 1 }, versions: { slow: 1 } };
+        const fastEvent = { windowName: 'fast', action: 'add', items: [{ id: '1' }], state: {} };
+        const slowEvent = { windowName: 'slow', action: 'add', items: [{ id: '1' }], state: {} };
 
         // Fast can fire twice
-        await fastTrigger._evaluate('workspace', fastEvent);
-        await fastTrigger._evaluate('workspace', fastEvent);
+        await fastTrigger._evaluate('window', fastEvent);
+        await fastTrigger._evaluate('window', fastEvent);
         
         // Slow fires once, blocked second time
-        await slowTrigger._evaluate('workspace', slowEvent);
-        await slowTrigger._evaluate('workspace', slowEvent);
+        await slowTrigger._evaluate('window', slowEvent);
+        await slowTrigger._evaluate('window', slowEvent);
 
         await new Promise(r => setTimeout(r, 50));
         assert.equal(calls1.length, 2, 'fast fired twice');
         assert.equal(calls2.length, 1, 'slow fired once');
-    },
-
-    async 'setState triggers for subscribed slices in patch'(assert: any) {
-        class PatchAgent extends Agent {
-            model = 'haiku';
-            subscribes = ['prices'];
-        }
-
-        const agent = new PatchAgent();
-        const { fn, calls } = mockDispatch();
-        const trigger = createSubscriptionTrigger('patch-test', agent, 'prices', 0, fn);
-
-        // setState with patch containing 'prices'
-        const event = {
-            action: 'setState' as const,
-            patch: { prices: { btc: 70000 } },
-            state: { prices: { btc: 70000 }, signals: [] },
-            versions: { prices: 2, signals: 0 },
-        };
-
-        const fired = await trigger._evaluate('workspace', event);
-        assert.ok(fired, 'trigger fired on setState with matching patch');
     },
 
     async 'TriggerManager evaluates subscription triggers alongside regular triggers'(assert: any) {
@@ -278,9 +254,9 @@ export const tests = {
         // Create both a regular trigger and a subscription trigger
         const regularTrigger = new Trigger();
         regularTrigger.name = 'regular';
-        regularTrigger.watch = 'workspace';
+        regularTrigger.watch = 'window';
         regularTrigger._dispatchFn = fn;
-        regularTrigger.condition = (e: any) => e.action === 'setSlice' && e.slice === 'data';
+        regularTrigger.condition = (e: any) => e.windowName === 'data';
         regularTrigger.run = async () => { await fn('regular-target', 'Regular trigger fired'); };
 
         const subTrigger = createSubscriptionTrigger('sub-agent', agent, 'data', 0, fn);
@@ -290,20 +266,20 @@ export const tests = {
         manager.add(subTrigger);
 
         const event = {
-            action: 'setSlice' as const,
-            slice: 'data',
-            state: { data: 'hello' },
-            versions: { data: 1 },
+            windowName: 'data',
+            action: 'add',
+            items: [{ id: 'hello' }],
+            state: {},
         };
 
-        await manager.evaluate('workspace', event);
+        await manager.evaluate('window', event);
         await new Promise(r => setTimeout(r, 50));
 
         // Both should fire
         assert.equal(calls.length, 2, 'both triggers dispatched');
     },
 
-    async 'Trigger name follows __subscribe__:agent:slice pattern'(assert: any) {
+    async 'Trigger name follows __subscribe__:agent:window pattern'(assert: any) {
         class NameAgent extends Agent {
             model = 'haiku';
             subscribes = ['metrics'];
@@ -314,7 +290,7 @@ export const tests = {
         const trigger = createSubscriptionTrigger('monitor', agent, 'metrics', 5000, fn);
 
         assert.equal(trigger.name, '__subscribe__:monitor:metrics', 'correct name');
-        assert.equal(trigger.watch, 'workspace', 'watches workspace');
+        assert.equal(trigger.watch, 'window', 'watches window');
         assert.equal(trigger.cooldown, 5000, 'correct cooldown');
     },
 };

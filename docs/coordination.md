@@ -34,7 +34,7 @@
 - [Agent Subscribes (Blackboard)](#agent-subscribes-blackboard)
   - [Simple Subscription](#simple-subscription)
   - [Custom Handler](#custom-handler)
-  - [Per-Slice Config](#per-slice-config)
+  - [Per-Window Config](#per-window-config)
   - [How It Works](#how-it-works-1)
 - [TaskBoard (Kanban)](#taskboard-kanban)
   - [Card Type](#card-type)
@@ -244,7 +244,7 @@ class MyTrigger extends Trigger {
 | Method | Description |
 |--------|-------------|
 | `this.dispatch(agent, message, options?)` | Dispatch an agent |
-| `this.select(key)` | Read a workspace slice (shortcut for `this.workspace.select(key)`) |
+| `this.select(key)` | Read a workspace state value (shortcut for `this.workspace.state[key]`) |
 
 ### Override Mode
 
@@ -261,7 +261,7 @@ class StaleTaskAlert extends Trigger {
     }
 
     async run(event: any): Promise<void> {
-        const stats = this.select('stats');
+        const stats = this.workspace?.state?.stats;
         if (stats?.remaining > 10) {
             await this.dispatch('planner',
                 `There are ${stats.remaining} pending tasks. Prioritize and suggest next actions.`
@@ -410,7 +410,7 @@ class MyPipeline extends Pipeline {
 
 **Injected by DriftServer:** `workspace`, `window`, `_dispatchFn`.
 
-**Protected API:** `this.dispatch()`, `this.select(key)`.
+**Protected API:** `this.dispatch()`, `this.select(key)` (reads from `workspace.state`).
 
 ### Step Styles
 
@@ -458,7 +458,7 @@ class SafePipeline extends Pipeline {
     steps = ['scanner', 'analyzer', 'executor'];
 
     afterStep(step, ctx) {
-        this.workspace?.setSlice('progress', `Step ${step + 1} done`);
+        this.workspace?.setState({ progress: `Step ${step + 1} done` });
     }
 
     onError(step, error, ctx) {
@@ -515,7 +515,7 @@ manager.on('error', (data) => { ... });
 
 ## Agent Subscribes (Blackboard)
 
-Declare `subscribes` on an Agent class to auto-dispatch it when specific workspace slices change. This is syntactic sugar over Trigger — internally, `DriftServer.start()` generates Trigger instances from agent subscriptions.
+Declare `subscribes` on an Agent class to auto-dispatch it when specific workspace **Windows** change. This is syntactic sugar over Trigger — internally, `DriftServer.start()` generates Trigger instances from agent subscriptions.
 
 ### Simple Subscription
 
@@ -526,7 +526,7 @@ class MarketAgent extends Agent {
     model = 'haiku';
     prompt = 'You analyze market data.';
 
-    // When 'prices' or 'signals' change → auto-dispatch this agent
+    // When 'prices' or 'signals' windows change → auto-dispatch this agent
     subscribes = ['prices', 'signals'];
     subscribeCooldown = 10_000;  // default: 5000ms
 }
@@ -534,38 +534,36 @@ class MarketAgent extends Agent {
 
 Default dispatch message:
 ```
-Workspace slice "prices" was updated:
-
-{"btc": 67000, "eth": 3200}
+Workspace window "prices" was updated.
 ```
 
 ### Custom Handler
 
-Override `onSliceChange()` to customize the dispatch message or skip entirely:
+Override `onWindowChange()` to customize the dispatch message or skip entirely:
 
 ```typescript
 class ExecutorAgent extends Agent {
     model = 'haiku';
     subscribes = ['signals'];
 
-    onSliceChange(slice: string, value: any, event: WorkspaceChangeEvent): string | null {
-        if (slice === 'signals' && value?.action === 'BUY') {
-            return `New BUY signal: ${JSON.stringify(value)}. Execute if risk is acceptable.`;
+    onWindowChange(windowName: string, event: WindowChangeEvent): string | null {
+        if (windowName === 'signals' && event.items?.[0]?.action === 'BUY') {
+            return `New BUY signal detected. Execute if risk is acceptable.`;
         }
         return null;  // null = skip dispatch entirely
     }
 }
 ```
 
-### Per-Slice Config
+### Per-Window Config
 
-Use objects instead of strings for per-slice cooldown control:
+Use objects instead of strings for per-window cooldown control:
 
 ```typescript
 class AlertAgent extends Agent {
     subscribes = [
-        { slice: 'alerts',  cooldown: 0 },       // every change
-        { slice: 'metrics', cooldown: 60_000 },   // max once per minute
+        { window: 'alerts',  cooldown: 0 },       // every change
+        { window: 'metrics', cooldown: 60_000 },   // max once per minute
     ];
 }
 ```
@@ -574,22 +572,22 @@ class AlertAgent extends Agent {
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
-| `subscribes` | `(string \| { slice, cooldown? })[]` | — | Workspace slices to watch |
+| `subscribes` | `(string \| { window, cooldown? })[]` | — | Workspace windows to watch |
 | `subscribeCooldown` | `number` | `5000` | Default cooldown in ms |
-| `onSliceChange()` | `(slice, value, event) => string \| null` | — | Custom message builder |
+| `onWindowChange()` | `(windowName, event) => string \| null` | — | Custom message builder |
 
 ### How It Works
 
 ```
 DriftServer.start()
   → for each agent with subscribes:
-    → for each subscribed slice:
-      → create Trigger { name: '__subscribe__:agentName:sliceName', watch: 'workspace' }
-      → condition: event.slice === sliceName
-      → run: onSliceChange() or default message → dispatch(agentName, message)
+    → for each subscribed window:
+      → create Trigger { name: '__subscribe__:agentName:windowName', watch: 'window' }
+      → condition: event.windowName matches
+      → run: onWindowChange() or default message → dispatch(agentName, message)
       → add to TriggerManager
 
-Workspace.setSlice('prices', newData)
+Window 'prices' changes
   → emit 'change' → TriggerManager.evaluate()
     → __subscribe__:market:prices fires
       → checks cooldown
@@ -597,7 +595,7 @@ Workspace.setSlice('prices', newData)
       → dispatch('market', message)
 ```
 
-Subscription triggers are named `__subscribe__::{agent}:{slice}` and appear alongside regular triggers in `trigger:list`.
+Subscription triggers are named `__subscribe__:{agent}:{window}` and appear alongside regular triggers in `trigger:list`.
 
 ---
 
@@ -846,7 +844,7 @@ class MetricsAlert extends Trigger {
     on = {
         // Any change to metrics slice
         '*': async (e: any) => {
-            const metrics = this.select('metrics');
+            const metrics = this.workspace?.state?.metrics;
             if (metrics.remaining > 20) {
                 await this.dispatch('planner',
                     `Backlog growing: ${metrics.remaining} tasks remaining. Re-prioritize.`

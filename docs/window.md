@@ -109,6 +109,39 @@ class Window<T extends WindowItem, S extends Record<string, any>> extends EventE
 
 Both emit `'change'` on mutation → triggers UI sync and persistence.
 
+### Name Property
+
+Windows can have an optional `name` property that identifies them within a Workspace:
+
+```typescript
+window.name;  // string | undefined — set when registered in a Workspace
+```
+
+The `name` is automatically set when you register a window in a workspace via `workspace.addWindow('my-window', window)`. It's used for filtering which windows an agent sees.
+
+### Workspace Registration
+
+Windows are typically registered into a Workspace, making them accessible to all agents by name:
+
+```typescript
+import { Workspace, Window } from 'drift';
+
+const workspace = new Workspace('my-app');
+const boardWindow = new TaskBoardWindow();
+
+workspace.addWindow('board', boardWindow);  // window.name = 'board'
+workspace.getWindow('board');                // returns boardWindow
+workspace.windowNames;                       // ['board']
+```
+
+Agents declare which windows they need via the `windows` property:
+
+```typescript
+class TaskAgent extends Agent {
+    windows = ['board'];  // only sees the 'board' window in its prompt
+}
+```
+
 ### Items CRUD
 
 ```typescript

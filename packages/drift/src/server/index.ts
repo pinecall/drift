@@ -106,6 +106,15 @@ export class DriftServer {
             }
         }
 
+        // 2b. Register collected windows into workspace
+        if (this._workspace) {
+            for (const [className, window] of this._windows) {
+                if (!this._workspace.hasWindow(className)) {
+                    this._workspace.addWindow(className, window);
+                }
+            }
+        }
+
         // 3. Inject workspace into all agents + restore from storage
         if (this._workspace) {
             for (const { agent } of this._agents) {
@@ -159,14 +168,14 @@ export class DriftServer {
             if (!agent.subscribes || agent.subscribes.length === 0) continue;
 
             for (const sub of agent.subscribes) {
-                const sliceName = typeof sub === 'string' ? sub : sub.slice;
+                const windowName = typeof sub === 'string' ? sub : sub.window;
                 const cooldown = typeof sub === 'string' ? agent.subscribeCooldown : (sub.cooldown ?? agent.subscribeCooldown);
                 const agentName = loaded.name;
 
-                // Create an inline Trigger that watches this workspace slice
+                // Create an inline Trigger that watches this workspace window
                 const trigger = new Trigger();
-                trigger.name = `__subscribe__:${agentName}:${sliceName}`;
-                trigger.watch = 'workspace';
+                trigger.name = `__subscribe__:${agentName}:${windowName}`;
+                trigger.watch = 'window';
                 trigger.cooldown = cooldown;
                 trigger.workspace = this._workspace || undefined;
                 if (this._windows.size > 0) {
@@ -174,31 +183,27 @@ export class DriftServer {
                 }
                 trigger._dispatchFn = this._ws.dispatch;
 
-                // Condition: slice matches
+                // Condition: check if the event comes from the subscribed window
                 trigger.condition = (event: any) => {
-                    if (event.action === 'setSlice') return event.slice === sliceName;
-                    if (event.action === 'setState' && event.patch) return sliceName in event.patch;
-                    return false;
+                    return event.windowName === windowName || event.name === windowName;
                 };
 
                 // Run: build message and dispatch
                 trigger.run = async (event: any) => {
-                    const value = event.state?.[sliceName];
                     let message: string | null;
 
                     // Try agent's custom handler first
-                    if (agent.onSliceChange) {
-                        message = agent.onSliceChange(sliceName, value, event);
+                    if (agent.onWindowChange) {
+                        message = agent.onWindowChange(windowName, event);
                     } else {
-                        // Default message with slice preview
-                        const preview = typeof value === 'string' ? value.slice(0, 500)
-                            : JSON.stringify(value, null, 2)?.slice(0, 500) || '';
-                        message = `Workspace slice "${sliceName}" was updated:\n\n${preview}`;
+                        // Default message with window change info
+                        const preview = JSON.stringify(event, null, 2)?.slice(0, 500) || '';
+                        message = `Window "${windowName}" was updated:\n\n${preview}`;
                     }
 
                     if (message !== null) {
                         await trigger._dispatchFn!(agentName, message, {
-                            source: `subscribe:${agentName}:${sliceName}`,
+                            source: `subscribe:${agentName}:${windowName}`,
                             silent: false,
                         });
                     }
@@ -259,8 +264,8 @@ export class DriftServer {
                     for (const loaded of this._agents) {
                         const agent = loaded.agent;
                         if (agent.subscribes && agent.subscribes.length > 0) {
-                            const slices = agent.subscribes.map((s: any) => typeof s === 'string' ? s : s.slice).join(', ');
-                            console.log(`    • ${loaded.name} → [${slices}]`);
+                            const wins = agent.subscribes.map((s: any) => typeof s === 'string' ? s : s.window).join(', ');
+                            console.log(`    • ${loaded.name} → [${wins}]`);
                         }
                     }
                 }

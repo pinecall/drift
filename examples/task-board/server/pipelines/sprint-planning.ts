@@ -24,9 +24,9 @@ export class SprintPlanningPipeline extends Pipeline {
     ];
 
     afterStep(step: number, ctx: any): void {
-        this.workspace?.setSlice('lastActivity',
+        this.workspace?.setState({ lastActivity:
             `Pipeline step ${step + 1}/3: ${ctx.stepName} done`
-        );
+        });
     }
 }
 

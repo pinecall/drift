@@ -1,4 +1,4 @@
-# Workspace — Shared Reactive State
+# Workspace — Shared Reactive Workstation
 
 > **Deep reference** for the `Workspace<S>` class. For the quick-start usage, see the [README](../README.md#workspace).
 
@@ -8,25 +8,25 @@
 
 - [Overview](#overview)
 - [Creating a Workspace](#creating-a-workspace)
-- [Reading State](#reading-state)
-  - [select()](#select)
-  - [state (read-only)](#state-read-only)
-  - [Versions](#versions)
-- [Writing State](#writing-state)
-  - [setSlice()](#setslice)
-  - [setState()](#setstate)
-  - [Optimistic Locking](#optimistic-locking)
+- [State Management](#state-management)
+  - [Reading State](#reading-state)
+  - [Writing State](#writing-state)
+- [Window Management](#window-management)
+  - [addWindow()](#addwindow)
+  - [getWindow()](#getwindow)
+  - [removeWindow()](#removewindow)
+  - [windowNames](#windownames)
+  - [hasWindow()](#haswindow)
 - [Change Events](#change-events)
   - [WorkspaceChangeEvent](#workspacechangeevent)
   - [Listening to Changes](#listening-to-changes)
 - [Agent Integration](#agent-integration)
   - [Injecting Workspace](#injecting-workspace)
-  - [workspaceSlices (Prompt Filtering)](#workspaceslices-prompt-filtering)
+  - [windows (Prompt Filtering)](#windows-prompt-filtering)
   - [subscribes (Blackboard Pattern)](#subscribes-blackboard-pattern)
-  - [Agent Tools](#agent-tools)
 - [Prompt Rendering](#prompt-rendering)
   - [render()](#render)
-  - [Filtering Slices](#filtering-slices)
+  - [Filtering Windows](#filtering-windows)
 - [Persistence](#persistence)
   - [toJSON / loadJSON](#tojson--loadjson)
   - [Automatic Persistence](#automatic-persistence)
@@ -42,13 +42,14 @@
 
 ## Overview
 
-`Workspace<S>` is a **shared reactive state container** for multi-agent collaboration. Unlike `Window` (items + state per-agent), Workspace is a **single flat state object** shared across **all** agents in the server.
+`Workspace<S>` is a **shared reactive workstation** for multi-agent collaboration. It serves two purposes:
 
-Top-level keys are called **slices**. Each agent can read/write any slice, and declare which slices it sees in its system prompt via `workspaceSlices`.
+1. **Container for named Windows** — agents register their Windows into the workspace, making them accessible to all agents by name
+2. **Shared state object** — a simple `S` state for cross-cutting data (metrics, settings, activity logs)
 
 **Key properties:**
-- **Per-slice optimistic versioning** — prevents concurrent write conflicts
-- **`structuredClone` on reads** — prevents accidental mutation of internal state
+- **Named Windows** — each Window is registered with a name, agents declare which ones they need
+- **Simple shared state** — shallow merge via `setState()`, no versioning complexity
 - **Change events** — real-time UI sync via WebSocket
 - **Serialization** — automatic persistence to SQLite
 
@@ -59,109 +60,111 @@ Top-level keys are called **slices**. Each agent can read/write any slice, and d
 ```typescript
 import { Workspace } from 'drift';
 
-// Type-safe workspace with defined slices
-interface TradingState {
-    market: { btc: number; eth: number };
-    signals: Array<{ action: string; symbol: string }>;
-    portfolio: Record<string, number>;
+// Type-safe workspace with shared state
+interface BoardState {
+    stats: { totalCreated: number; totalCompleted: number; agentInteractions: number };
+    lastActivity: string[];
 }
 
-const workspace = new Workspace<TradingState>('trading', {
-    market: { btc: 0, eth: 0 },
-    signals: [],
-    portfolio: {},
+const workspace = new Workspace<BoardState>('task-board', {
+    stats: { totalCreated: 0, totalCompleted: 0, agentInteractions: 0 },
+    lastActivity: [],
 });
 ```
 
-**Constructor:** `new Workspace<S>(name: string, initialState: S)`
+**Constructor:** `new Workspace<S>(name: string, initialState?: S)`
 
 - `name` — unique identifier, used as the persistence key in SQLite
-- `initialState` — full initial state object; each key becomes a versioned slice
-
-All slices start at version `0`.
+- `initialState` — optional initial shared state object (defaults to `{}`)
 
 ---
 
-## Reading State
+## State Management
 
-### select()
+### Reading State
 
 ```typescript
-const market = workspace.select('market');
-// { btc: 67000, eth: 3200 }  — deep copy via structuredClone
+workspace.state;              // full state object
+workspace.state.stats;        // access a specific key
+workspace.state.lastActivity; // arrays, objects, etc.
 ```
 
-Returns a **deep copy** (via `structuredClone`) of the slice. Safe to mutate without affecting internal state.
-
-### state (read-only)
+State returns a direct reference. For safe copies, use `structuredClone()`:
 
 ```typescript
-const fullState = workspace.state;
-// Readonly reference — do NOT mutate
+const safeCopy = structuredClone(workspace.state.stats);
+safeCopy.totalCreated++;  // doesn't affect workspace
 ```
 
-Returns a `Readonly<S>` reference to the full state. Use `select()` for safe copies.
-
-### Versions
+### Writing State
 
 ```typescript
-workspace.version('market');   // 3 — current version of 'market' slice
-workspace.versions;             // { market: 3, signals: 1, portfolio: 0 }
-```
+// Shallow merge — like React's setState
+workspace.setState({ stats: { totalCreated: 5, totalCompleted: 2, agentInteractions: 10 } });
+// Only 'stats' key is replaced, 'lastActivity' is unchanged
 
-Each write to a slice bumps its version by 1. Versions are used for [optimistic locking](#optimistic-locking).
+workspace.setState({ lastActivity: ['Agent started'] });
+// Only 'lastActivity' key is replaced
 
----
-
-## Writing State
-
-### setSlice()
-
-```typescript
-const ok = workspace.setSlice('market', { btc: 67000, eth: 3200 });
-// true — write succeeded, version bumped
-```
-
-**Signature:** `setSlice<K>(key: K, value: S[K], expectedVersion?: number): boolean`
-
-- Replaces the slice atomically
-- Bumps the version by 1
-- Emits a `'change'` event with `action: 'setSlice'`
-- Returns `true` on success, `false` on version mismatch (see [optimistic locking](#optimistic-locking))
-
-### setState()
-
-```typescript
-workspace.setState({
-    market: { btc: 68000, eth: 3300 },
-    portfolio: { BTC: 0.5 },
-});
-// Shallow merge — signals is not affected
+// Agent usage:
+const stats = { ...this.workspace.state.stats };
+stats.agentInteractions++;
+this.workspace.setState({ stats });
 ```
 
 **Signature:** `setState(patch: Partial<S>): void`
 
 - **Shallow merge** into state (like React's `setState`)
-- Bumps version for **each changed key** in the patch
 - Emits a `'change'` event with `action: 'setState'`
 
-### Optimistic Locking
+---
 
-Prevent concurrent write conflicts by passing `expectedVersion`:
+## Window Management
+
+Workspace is a container for named Windows. The server auto-registers agent windows, but you can also manage them manually.
+
+### addWindow()
 
 ```typescript
-const v = workspace.version('market');  // 3
-const ok = workspace.setSlice('market', newData, v);
+import { Window } from 'drift';
 
-if (!ok) {
-    // Another write happened first — version is now 4+
-    // Re-read, merge, and retry
-    const fresh = workspace.select('market');
-    workspace.setSlice('market', { ...fresh, ...myChanges });
-}
+const filesWindow = new Window();
+workspace.addWindow('files', filesWindow);
+// Window's .name is set to 'files'
 ```
 
-If `expectedVersion` doesn't match the current version, the write is **rejected** (returns `false`). Without `expectedVersion`, writes always succeed.
+**Signature:** `addWindow(name: string, window: Window): void`
+
+- Registers the Window with a name
+- Sets `window.name = name`
+- Emits `'change'` with `action: 'windowAdded'`
+
+### getWindow()
+
+```typescript
+const win = workspace.getWindow('files');         // Window | undefined
+const typed = workspace.getWindow<MyWindow>('board');  // typed cast
+```
+
+### removeWindow()
+
+```typescript
+const removed = workspace.removeWindow('temp');   // true if existed
+```
+
+Emits `'change'` with `action: 'windowRemoved'`.
+
+### windowNames
+
+```typescript
+workspace.windowNames;  // ['files', 'board', 'stats'] — all registered names
+```
+
+### hasWindow()
+
+```typescript
+workspace.hasWindow('files');  // boolean
+```
 
 ---
 
@@ -169,16 +172,14 @@ If `expectedVersion` doesn't match the current version, the write is **rejected*
 
 ### WorkspaceChangeEvent
 
-Every write emits a `'change'` event with this shape:
+Every write or window change emits a `'change'` event:
 
 ```typescript
 interface WorkspaceChangeEvent<S> {
-    action: 'setState' | 'setSlice' | 'sync';
-    slice?: string;              // which slice changed (setSlice only)
+    action: 'setState' | 'windowAdded' | 'windowRemoved' | 'sync';
     state: S;                    // current full state snapshot
     patch?: Partial<S>;          // patch applied (setState only)
-    version?: number;            // version of the changed slice
-    versions: Record<string, number>;  // all current versions
+    windowName?: string;         // which window was added/removed
 }
 ```
 
@@ -187,11 +188,11 @@ interface WorkspaceChangeEvent<S> {
 ```typescript
 workspace.on('change', (event) => {
     console.log(`Action: ${event.action}`);
-    if (event.action === 'setSlice') {
-        console.log(`Slice "${event.slice}" updated to v${event.version}`);
-    }
     if (event.action === 'setState') {
         console.log('Keys changed:', Object.keys(event.patch!));
+    }
+    if (event.action === 'windowAdded') {
+        console.log(`Window "${event.windowName}" was registered`);
     }
 });
 ```
@@ -199,7 +200,7 @@ workspace.on('change', (event) => {
 **How the server uses change events:**
 
 ```
-Workspace.setSlice('prices', data)
+Workspace.setState({ stats: updated })
   → emit 'change'
     → broadcast 'workspace:changed' to all WebSocket clients
     → debounced persist to SQLite (max 1x/100ms)
@@ -230,42 +231,43 @@ Every agent then has `this.workspace` available:
 ```typescript
 class TaskAgent extends Agent {
     async doSomething() {
-        const tasks = this.workspace?.select('tasks');
-        this.workspace?.setSlice('tasks', [...tasks, newTask]);
+        const stats = { ...this.workspace.state.stats };
+        stats.totalCreated++;
+        this.workspace.setState({ stats });
     }
 }
 ```
 
-### workspaceSlices (Prompt Filtering)
+### windows (Prompt Filtering)
 
-Control which slices appear in an agent's system prompt:
+Control which workspace Windows appear in an agent's system prompt:
 
 ```typescript
 class ScannerAgent extends Agent {
-    workspaceSlices = ['market', 'signals'];
-    // Only 'market' and 'signals' are rendered in the prompt
-    // 'portfolio' and other slices are hidden
+    windows = ['market', 'signals'];
+    // Only 'market' and 'signals' Windows are rendered in the prompt
+    // Other windows are hidden
 }
 
 class ReviewerAgent extends Agent {
-    // workspaceSlices not set → ALL slices are rendered
+    // windows not set → ALL workspace windows are rendered
 }
 ```
 
-This controls **visibility only** — the agent can still programmatically read/write any slice via tools.
+This controls **visibility only** — the agent can still programmatically read/write the workspace state via tools.
 
 ### subscribes (Blackboard Pattern)
 
-Auto-dispatch the agent when specific slices change:
+Auto-dispatch the agent when specific Windows change:
 
 ```typescript
 class MarketAgent extends Agent {
     subscribes = ['prices', 'signals'];
     subscribeCooldown = 10_000;  // default: 5000ms
 
-    onSliceChange(slice: string, value: any): string | null {
-        if (slice === 'prices' && value?.btc > 70_000) {
-            return `BTC above 70k! Current: ${value.btc}`;
+    onWindowChange(windowName: string, event: any): string | null {
+        if (windowName === 'prices' && event.items?.[0]?.btc > 70_000) {
+            return `BTC above 70k! Check the prices window.`;
         }
         return null;  // skip dispatch
     }
@@ -273,17 +275,6 @@ class MarketAgent extends Agent {
 ```
 
 See [Coordination → Agent Subscribes](./coordination.md#agent-subscribes-blackboard) for full docs.
-
-### Agent Tools
-
-Agents interact with workspace via built-in tools that are auto-registered:
-
-| Tool | Description | Agent sees in prompt |
-|------|-------------|---------------------|
-| `workspace_read` | Read a workspace slice | Yes (auto-registered) |
-| `workspace_write` | Write to a workspace slice | Yes (auto-registered) |
-
-The workspace state is also rendered as XML in the system prompt (see [Prompt Rendering](#prompt-rendering)).
 
 ---
 
@@ -300,29 +291,28 @@ workspace.render();
 Produces:
 
 ```xml
-<workspace name="trading">
-  <slice name="market" v="3">
-{"btc": 67000, "eth": 3200}
-  </slice>
-  <slice name="signals" v="1">
-[{"action": "BUY", "symbol": "BTC"}]
-  </slice>
-  <slice name="portfolio" v="0">
-{}
-  </slice>
+<workspace name="task-board">
+  <!-- Each registered Window renders its own content here -->
+  <task-board>
+    ... window items ...
+  </task-board>
+
+  <state>
+    {"stats": {"totalCreated": 5, "totalCompleted": 2}, "lastActivity": [...]}
+  </state>
 </workspace>
 ```
 
-Each `<slice>` tag includes the current version (`v="N"`) so the agent knows how fresh the data is.
+If there are no windows and the shared state is empty, `render()` returns an empty string (nothing injected into prompt).
 
-### Filtering Slices
+### Filtering Windows
 
 ```typescript
 workspace.render(['market', 'signals']);
-// Only renders 'market' and 'signals' slices
+// Only renders 'market' and 'signals' windows
 ```
 
-This is what `workspaceSlices` on Agent uses internally — on each turn, the agent loop calls `workspace.render(agent.workspaceSlices)`.
+This is what `agent.windows` uses internally — on each turn, the agent loop calls `workspace.render(agent.windows)`.
 
 ---
 
@@ -333,14 +323,12 @@ This is what `workspaceSlices` on Agent uses internally — on each turn, the ag
 ```typescript
 // Serialize
 const data = workspace.toJSON();
-// { name: 'trading', state: {...}, versions: { market: 3, ... } }
+// { name: 'task-board', state: {...}, windows: { board: {...} } }
 
 // Restore
 workspace.loadJSON(data);
-// State and versions are fully restored
+// State is fully restored
 ```
-
-`loadJSON` handles migration gracefully — if `versions` is missing (old data), all slices are initialized at version `0`.
 
 ### Automatic Persistence
 
@@ -350,7 +338,7 @@ When `DriftServer` has storage enabled, workspace state is automatically persist
 2. **On startup** — restored from SQLite via `storage.loadWorkspace(name)`
 
 ```
-Workspace.setSlice('prices', data)
+Workspace.setState({ stats: updated })
   → emit 'change'
     → clearTimeout(previous timer)
     → setTimeout(100ms) → storage.saveWorkspace(name, workspace.toJSON())
@@ -367,28 +355,26 @@ Persistence is transparent — no agent code needed.
 | Action | Payload | Description |
 |--------|---------|-------------|
 | `workspace:setState` | `{ patch: Partial<S> }` | Shallow merge into workspace state |
-| `workspace:setSlice` | `{ slice: string, value: any }` | Replace a single slice |
 
 ### Events (Server → Client)
 
 | Event | Payload | When |
 |-------|---------|------|
-| `workspace:changed` | `{ name, action, slice?, state, patch?, version?, versions }` | Any workspace write |
+| `workspace:changed` | `{ name, action, state, patch?, windowName? }` | Any workspace write or window change |
 
 **On client connect**, the server sends the current workspace state as an initial `workspace:changed` event with `action: 'sync'`.
 
-**React hook usage (@drift/react):**
+**React hook usage (drift/react):**
 
 ```typescript
-import { useDrift } from '@drift/react';
+import { useWorkspace } from 'drift/react';
 
 function Dashboard() {
-    const { workspace } = useDrift();
-    
-    // workspace.state — full reactive state
-    // workspace.versions — current versions
-    // workspace.setState(patch) — send workspace:setState
-    // workspace.setSlice(key, value) — send workspace:setSlice
+    const { state, setState, windowNames } = useWorkspace();
+
+    // state — full reactive workspace state
+    // setState(patch) — send workspace:setState
+    // windowNames — list of registered window names
 }
 ```
 
@@ -400,13 +386,14 @@ function Dashboard() {
 DriftServer.start()
   1. Create workspace (from options.workspace)
   2. Inject into all agents: agent.workspace = workspace
-  3. Restore from SQLite: workspace.loadJSON(saved)
-  4. Pass to createWSHandler()
-  5. Wire change events:
+  3. Register agent windows: workspace.addWindow(name, window)
+  4. Restore from SQLite: workspace.loadJSON(saved)
+  5. Pass to createWSHandler()
+  6. Wire change events:
      → broadcast workspace:changed
      → debounced persist to SQLite
      → triggerManager.evaluate('workspace', event)
-  6. Generate subscription triggers from agent.subscribes
+  7. Generate subscription triggers from agent.subscribes
 ```
 
 **Config in `drift.config.json`:**
@@ -436,14 +423,16 @@ await server.start();
 │                         Workspace                            │
 │                                                              │
 │  ┌──────────────────────────────────────────────────────┐    │
-│  │  _state: { market: {...}, signals: [...], ... }      │    │
-│  │  _versions: { market: 3, signals: 1, portfolio: 0 } │    │
+│  │  _windows: Map<string, Window>                       │    │
+│  │    'board'  → TaskBoardWindow                        │    │
+│  │    'files'  → CodebaseWindow                         │    │
+│  │  _state:  { stats: {...}, lastActivity: [...] }      │    │
 │  └──────────────────────────────────────────────────────┘    │
 │                           │                                   │
 │          ┌────────────────┼─────────────────┐                │
 │          ▼                ▼                 ▼                │
-│   setSlice()         setState()        select()              │
-│   (atomic)           (shallow merge)   (structuredClone)     │
+│   addWindow()         setState()       getWindow()           │
+│   removeWindow()      (shallow merge)  windowNames           │
 │          │                │                                   │
 │          └───────┬────────┘                                   │
 │                  ▼                                            │
@@ -458,14 +447,14 @@ await server.start();
 
 | Concept | File | Description |
 |---------|------|-------------|
-| `Workspace<S>` class | `core/workspace.ts` | Base class (~193 lines) |
-| `WorkspaceChangeEvent` | `core/workspace.ts` | Change event type |
+| `Workspace<S>` class | `state/workspace.ts` | Base class |
+| `WorkspaceChangeEvent` | `state/workspace.ts` | Change event type |
 | `agent.workspace` | `core/agent.ts` | Injected reference |
-| `agent.workspaceSlices` | `core/agent.ts` | Prompt filtering |
+| `agent.windows` | `core/agent.ts` | Prompt filtering — which windows to render |
 | `agent.subscribes` | `core/agent.ts` | Blackboard subscriptions |
 | WS broadcast + persist | `server/ws.ts` | Change event wiring |
 | Workspace restoration | `server/index.ts` | Startup loading |
-| `saveWorkspace` / `loadWorkspace` | `core/sqlite-storage.ts` | SQLite persistence |
+| `saveWorkspace` / `loadWorkspace` | `storage/sqlite-storage.ts` | SQLite persistence |
 
 ---
 
@@ -474,22 +463,21 @@ await server.start();
 | Aspect | Workspace | Window |
 |--------|-----------|--------|
 | **Scope** | One per server, shared by ALL agents | One or more per agent, agent-specific |
-| **Data model** | Flat key-value slices | Items array + state object |
-| **Read safety** | `structuredClone` on `select()` | Direct reference |
-| **Versioning** | Per-slice optimistic locking | Per-item via turn counter |
-| **Use case** | Global state: metrics, config, signals | Agent context: files, tasks, board items |
-| **Prompt injection** | `<workspace>` XML | `<window>` XML |
+| **Data model** | Named Windows + shared state | Items collection + state object |
+| **Role** | Workstation — organizes and holds Windows | Data container for a specific domain |
+| **Use case** | Cross-agent shared context, global state | Agent context: files, tasks, board items |
+| **Prompt injection** | `<workspace>` XML with named windows + state | `<window>` XML with items |
 | **Persistence** | Debounced SQLite | SQLite on change |
 
-**When to use Workspace:**
-- Cross-agent shared state (metrics, signals, portfolio)
-- UI dashboard state (board columns, settings)
+**When to use Workspace state:**
+- Cross-agent shared metrics (velocity, totals, counters)
+- Activity logs visible to all agents
 - Global configuration that agents can modify
 
-**When to use Window:**
+**When to use Windows (inside Workspace):**
 - Agent-specific context (open files, board items)
 - CRUD collections with add/remove/update
-- Data that needs to be rendered with line numbers
+- Data that needs custom `render()` for agent prompts
 
 ---
 
@@ -499,26 +487,28 @@ await server.start();
 
 ```typescript
 import { Workspace } from 'drift';
+import { Window } from 'drift';
 
 const ws = new Workspace('test', { counter: 0, items: [] });
 
 // Read
-assert(ws.select('counter') === 0);
-assert(ws.version('counter') === 0);
+assert(ws.state.counter === 0);
 
 // Write
-ws.setSlice('counter', 42);
-assert(ws.select('counter') === 42);
-assert(ws.version('counter') === 1);
+ws.setState({ counter: 42 });
+assert(ws.state.counter === 42);
 
-// structuredClone safety
-const items = ws.select('items');
-items.push('mutated');
-assert(ws.select('items').length === 0);  // internal state unchanged
+// Window management
+const win = new Window();
+ws.addWindow('data', win);
+assert(ws.hasWindow('data'));
+assert(ws.windowNames.length === 1);
 
-// Optimistic locking
-const ok = ws.setSlice('counter', 100, 0);  // expected v0, but it's v1
-assert(!ok);  // rejected
+const retrieved = ws.getWindow('data');
+assert(retrieved === win);
+
+ws.removeWindow('data');
+assert(!ws.hasWindow('data'));
 ```
 
 ### Testing Change Events
@@ -527,16 +517,15 @@ assert(!ok);  // rejected
 const events: WorkspaceChangeEvent[] = [];
 ws.on('change', (e) => events.push(e));
 
-ws.setSlice('counter', 5);
+ws.setState({ counter: 5 });
 assert(events.length === 1);
-assert(events[0].action === 'setSlice');
-assert(events[0].slice === 'counter');
-assert(events[0].version === 2);
+assert(events[0].action === 'setState');
+assert(events[0].state.counter === 5);
 
-ws.setState({ counter: 10, items: ['a'] });
+ws.addWindow('test', new Window());
 assert(events.length === 2);
-assert(events[1].action === 'setState');
-assert(Object.keys(events[1].patch!).length === 2);
+assert(events[1].action === 'windowAdded');
+assert(events[1].windowName === 'test');
 ```
 
 ### Serialization Roundtrip
@@ -545,6 +534,5 @@ assert(Object.keys(events[1].patch!).length === 2);
 const data = ws.toJSON();
 const ws2 = new Workspace('test', { counter: 0, items: [] });
 ws2.loadJSON(data);
-assert(ws2.select('counter') === ws.select('counter'));
-assert(ws2.version('counter') === ws.version('counter'));
+assert(ws2.state.counter === ws.state.counter);
 ```

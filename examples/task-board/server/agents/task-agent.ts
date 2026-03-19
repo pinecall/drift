@@ -16,7 +16,7 @@ export class TaskAgent extends Agent {
     thinking = false;
     effort = 'low' as const;
     maxIterations = 15;
-    workspaceSlices = ['stats', 'lastActivity'];
+    windows = ['stats', 'lastActivity'];
 
     prompt = `You are a task management assistant. You help users manage their task board.
 
@@ -50,19 +50,19 @@ Keep responses concise and action-oriented.`;
     /** Update shared workspace stats */
     private _trackStats(action: 'created' | 'completed' | 'deleted' | 'interaction', detail: string) {
         if (!this.workspace) return;
-        const stats = this.workspace.select('stats') || {
+        const stats = { ...(this.workspace.state.stats || {
             totalCreated: 0, totalCompleted: 0, totalDeleted: 0, agentInteractions: 0,
-        };
+        }) };
         if (action === 'created') stats.totalCreated++;
         if (action === 'completed') stats.totalCompleted++;
         if (action === 'deleted') stats.totalDeleted++;
         stats.agentInteractions++;
-        this.workspace.setSlice('stats', stats);
+        this.workspace.setState({ stats });
 
         // Push to activity log (keep last 20)
-        const activity = this.workspace.select('lastActivity') || [];
+        const activity = [...(this.workspace.state.lastActivity || [])];
         activity.push(`[${new Date().toLocaleTimeString()}] 🤖 task-agent: ${detail}`);
-        this.workspace.setSlice('lastActivity', activity.slice(-20));
+        this.workspace.setState({ lastActivity: activity.slice(-20) });
     }
 
     @tool('Create a new task on the board', {

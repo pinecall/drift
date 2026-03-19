@@ -7,7 +7,8 @@
     "exports": {
         ".": "./packages/drift/src/index.ts",
         "./server": "./packages/drift/src/server/index.ts",
-        "./react": "./packages/react/src/index.ts"
+        "./react": "./packages/react/src/index.ts",
+        "./jsx-runtime": "./packages/drift/src/jsx-runtime.ts"
     },
     "bin": {
         "drift": "./bin/drift.ts"

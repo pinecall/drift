@@ -159,9 +159,9 @@ export class Pipeline {
         return this._dispatchFn(agent, message, { source: `pipeline:${name}`, ...options });
     }
 
-    /** Read a workspace slice. */
+    /** Read a workspace state value. */
     protected select<T = any>(key: string): T | undefined {
-        return this.workspace?.select(key) as T | undefined;
+        return this.workspace?.state?.[key] as T | undefined;
     }
 
     // ── Internal execution ──

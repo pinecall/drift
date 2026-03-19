@@ -3,7 +3,7 @@
  * 
  * Reactive hook for shared workspace state (cross-agent).
  * 
- *   const { state, setState, setSlice } = useWorkspace<MyState>();
+ *   const { state, setState, windowNames } = useWorkspace<MyState>();
  * 
  * Subscribes to workspace:changed events from the server.
  * Mutations dispatch to the server and auto-sync back.
@@ -17,23 +17,21 @@ export interface UseWorkspaceReturn<S = Record<string, any>> {
     state: S;
     /** Update state (shallow merge) */
     setState: (patch: Partial<S>) => void;
-    /** Replace a single slice atomically */
-    setSlice: <K extends keyof S>(key: K, value: S[K]) => void;
-    /** Per-slice version numbers */
-    versions: Record<string, number>;
+    /** Available window names in the workspace */
+    windowNames: string[];
 }
 
 export function useWorkspace<S = Record<string, any>>(): UseWorkspaceReturn<S> {
     const { send, subscribe } = useDriftContext();
     const [state, setState_] = useState<S>({} as S);
-    const [versions, setVersions] = useState<Record<string, number>>({});
+    const [windowNames, setWindowNames] = useState<string[]>([]);
 
     // Subscribe to workspace:changed events
     useEffect(() => {
         return subscribe((event) => {
             if (event.event === 'workspace:changed') {
                 if (event.state) setState_(event.state);
-                if (event.versions) setVersions(event.versions);
+                if (event.windowNames) setWindowNames(event.windowNames);
             }
         });
     }, [subscribe]);
@@ -44,9 +42,5 @@ export function useWorkspace<S = Record<string, any>>(): UseWorkspaceReturn<S> {
         send({ action: 'workspace:setState', patch });
     }, [send]);
 
-    const setSlice = useCallback(<K extends keyof S>(key: K, value: S[K]) => {
-        send({ action: 'workspace:setSlice', slice: key, value });
-    }, [send]);
-
-    return { state, setState, setSlice, versions };
+    return { state, setState, windowNames };
 }

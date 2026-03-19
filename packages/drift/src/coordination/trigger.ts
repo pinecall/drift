@@ -118,9 +118,19 @@ export class Trigger {
      */
     condition(event: WindowChangeEvent | WorkspaceChangeEvent): boolean {
         if (this.field && this.on) {
-            if (event.action !== 'update' && event.action !== 'setSlice') return false;
-            if ('patch' in event && event.patch) return this.field in event.patch;
-            if ('slice' in event) return event.slice === this.field;
+            // StateMachine mode: fire on update when field is in patch,
+            // AND on add when the added item has the field set
+            if (event.action === 'update' || event.action === 'setState') {
+                if ('patch' in event && event.patch) return this.field in event.patch;
+                return false;
+            }
+            if (event.action === 'add') {
+                // New item added — check if the item has the field we're watching
+                if ('item' in event && event.item) {
+                    return this.field in event.item;
+                }
+                return false;
+            }
             return false;
         }
         return false;
@@ -154,12 +164,9 @@ export class Trigger {
         return this._dispatchFn(agent, message, { source: `trigger:${name}`, ...options });
     }
 
-    /**
-     * Read a workspace slice.
-     * Shorthand for `this.workspace.select(key)`.
-     */
+    /** Read a workspace state value. */
     protected select<T = any>(key: string): T | undefined {
-        return this.workspace?.select(key) as T | undefined;
+        return this.workspace?.state?.[key] as T | undefined;
     }
 
     // ── Internal evaluation ──

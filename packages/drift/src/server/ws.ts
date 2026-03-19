@@ -35,6 +35,34 @@ import { NoAuth, type DriftAuth, type DriftUser } from '../auth/auth.ts';
 import { TriggerManager, type DispatchFn, type DispatchResult, type DispatchOptions } from '../coordination/trigger.ts';
 import { PipelineManager } from '../coordination/pipeline.ts';
 
+// ── Debug Logger ────────────────────────────────────
+
+const DEBUG = !!process.env.DRIFT_DEBUG;
+
+function _debugLog(direction: '←' | '→' | '⚡' | '🔔', label: string, data?: any) {
+    if (!DEBUG) return;
+    const ts = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const colors: Record<string, string> = { '←': '\x1b[36m', '→': '\x1b[32m', '⚡': '\x1b[33m', '🔔': '\x1b[35m' };
+    const reset = '\x1b[0m';
+    const color = colors[direction] || '';
+    const summary = data ? _summarize(data) : '';
+    console.log(`${color}[${ts}] ${direction} ${label}${reset}${summary ? ` ${summary}` : ''}`);
+}
+
+function _summarize(data: any): string {
+    if (!data) return '';
+    const parts: string[] = [];
+    if (data.action) parts.push(`action=${data.action}`);
+    if (data.event) parts.push(`event=${data.event}`);
+    if (data.agent) parts.push(`agent=${data.agent}`);
+    if (data.sessionId) parts.push(`sid=${String(data.sessionId).slice(0, 12)}`);
+    if (data.message) parts.push(`msg="${String(data.message).slice(0, 60)}"`);
+    if (data.windowClass) parts.push(`win=${data.windowClass}`);
+    if (data.id) parts.push(`id=${data.id}`);
+    if (data.error) parts.push(`err="${String(data.error).slice(0, 60)}"`);
+    return parts.length ? `{ ${parts.join(', ')} }` : '';
+}
+
 // ── Types ───────────────────────────────────────────
 
 interface ClientMessage {
@@ -69,6 +97,7 @@ export function createWSHandler(
     // ── Broadcast to all clients ────────────────────
 
     function broadcast(data: any) {
+        _debugLog('→', `BROADCAST (${clients.size} clients)`, data);
         const msg = JSON.stringify(data);
         for (const ws of clients) {
             if (ws.readyState === 1) ws.send(msg);
@@ -76,6 +105,7 @@ export function createWSHandler(
     }
 
     function send(ws: WebSocket, data: any) {
+        _debugLog('→', 'SEND', data);
         if (ws.readyState === 1) ws.send(JSON.stringify(data));
     }
 
@@ -344,7 +374,7 @@ export function createWSHandler(
                 name: workspace.name,
                 action: 'sync',
                 state: workspace.state,
-                versions: workspace.versions,
+                windowNames: workspace.windowNames,
             });
         }
 
@@ -388,6 +418,7 @@ export function createWSHandler(
     // ── Message Router ──────────────────────────────
 
     async function handleMessage(ws: WebSocket, msg: ClientMessage) {
+        _debugLog('←', `CLIENT ${msg.action}`, msg);
         switch (msg.action) {
 
             // ── Chat ────────────────────────────────
@@ -754,13 +785,6 @@ export function createWSHandler(
             case 'workspace:setState': {
                 if (workspace && msg.patch) {
                     workspace.setState(msg.patch);
-                }
-                break;
-            }
-
-            case 'workspace:setSlice': {
-                if (workspace && msg.slice !== undefined && msg.value !== undefined) {
-                    workspace.setSlice(msg.slice, msg.value);
                 }
                 break;
             }

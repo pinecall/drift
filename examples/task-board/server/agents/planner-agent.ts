@@ -18,24 +18,28 @@ export class PlannerAgent extends Agent {
     thinking = false;
     effort = 'low' as const;
     maxIterations = 15;
-    workspaceSlices = ['stats', 'lastActivity'];
+    windows = ['stats', 'lastActivity'];
 
-    prompt = `You are a project planning specialist. You help break down goals into actionable tasks.
+    prompt = `You are a project planning specialist and team coordinator. You break down goals into tasks AND coordinate other agents to execute work.
 
 IMPORTANT: The full board state is in your context inside <task-board>. You can see all existing tasks.
 Also check <workspace> for shared stats and recent activity from other agents.
 
-Your specialties:
+## Your Specialties
 - Breaking down complex goals into 3-8 focused tasks with clear priorities
-- Analyzing the todo column and suggesting priority adjustments
-- Creating well-structured task descriptions with acceptance criteria
-- Identifying dependencies between tasks
+- Coordinating other agents via dispatch_agent to execute work
+- Analyzing the board and suggesting priority adjustments
 
-When planning a project:
+## Available Agents (use EXACT names for dispatch_agent)
+- "task-agent" — Manages tasks: create, move (todo/doing/done), update, delete, bulk actions. When referencing a specific task, ALWAYS include its ID (e.g. "task-1234").
+- "reviewer-agent" — Reviews completed tasks for quality, adds review notes, generates sprint summaries.
+
+## Workflow
 1. Analyze the current board state first
-2. Create tasks in a logical order (dependencies first)
-3. Assign realistic priorities (only 1-2 high, rest medium/low)
-4. Write actionable descriptions (what, why, acceptance criteria)
+2. Create tasks with create_task (you get back the task ID — save it!)
+3. Use dispatch_agent to delegate work to task-agent or reviewer-agent
+4. When dispatching about a specific task, ALWAYS include the task ID in the message
+5. Assign realistic priorities (only 1-2 high, rest medium/low)
 
 Keep responses structured and professional. Use bullet points.`;
 
@@ -50,15 +54,15 @@ Keep responses structured and professional. Use bullet points.`;
 
     private _trackStats(detail: string) {
         if (!this.workspace) return;
-        const stats = this.workspace.select('stats') || {
+        const stats = { ...(this.workspace.state.stats || {
             totalCreated: 0, totalCompleted: 0, totalDeleted: 0, agentInteractions: 0,
-        };
+        }) };
         stats.agentInteractions++;
-        this.workspace.setSlice('stats', stats);
+        this.workspace.setState({ stats });
 
-        const activity = this.workspace.select('lastActivity') || [];
+        const activity = [...(this.workspace.state.lastActivity || [])];
         activity.push(`[${new Date().toLocaleTimeString()}] 📋 planner: ${detail}`);
-        this.workspace.setSlice('lastActivity', activity.slice(-20));
+        this.workspace.setState({ lastActivity: activity.slice(-20) });
     }
 
     @tool('Break down a project goal into multiple tasks', {
@@ -110,12 +114,12 @@ Keep responses structured and professional. Use bullet points.`;
 
         // Update workspace stats
         if (this.workspace) {
-            const stats = this.workspace.select('stats') || {
+            const stats = { ...(this.workspace.state.stats || {
                 totalCreated: 0, totalCompleted: 0, totalDeleted: 0, agentInteractions: 0,
-            };
+            }) };
             stats.totalCreated++;
             stats.agentInteractions++;
-            this.workspace.setSlice('stats', stats);
+            this.workspace.setState({ stats });
         }
 
         this._trackStats(`Created "${title}"`);

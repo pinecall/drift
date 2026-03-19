@@ -41,6 +41,9 @@ export interface WindowChangeEvent<T extends WindowItem = WindowItem, S = any> {
 // ── Window<T, S> ────────────────────────────────────
 
 export class Window<T extends WindowItem = WindowItem, S extends Record<string, any> = Record<string, any>> extends EventEmitter {
+    /** Optional name — set when registered in a Workspace. */
+    name?: string;
+
     protected _items = new Map<string, T>();
     protected _state: S;
     protected _turn: number = 0;

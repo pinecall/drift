@@ -17,7 +17,7 @@ export class ReviewerAgent extends Agent {
     thinking = false;
     effort = 'low' as const;
     maxIterations = 15;
-    workspaceSlices = ['stats', 'lastActivity'];
+    windows = ['stats', 'lastActivity'];
 
     prompt = `You are a task review specialist. You focus on quality, completeness, and team metrics.
 
@@ -48,15 +48,15 @@ Keep feedback constructive and specific. Be concise.`;
 
     private _trackStats(detail: string) {
         if (!this.workspace) return;
-        const stats = this.workspace.select('stats') || {
+        const stats = { ...(this.workspace.state.stats || {
             totalCreated: 0, totalCompleted: 0, totalDeleted: 0, agentInteractions: 0,
-        };
+        }) };
         stats.agentInteractions++;
-        this.workspace.setSlice('stats', stats);
+        this.workspace.setState({ stats });
 
-        const activity = this.workspace.select('lastActivity') || [];
+        const activity = [...(this.workspace.state.lastActivity || [])];
         activity.push(`[${new Date().toLocaleTimeString()}] 🔍 reviewer: ${detail}`);
-        this.workspace.setSlice('lastActivity', activity.slice(-20));
+        this.workspace.setState({ lastActivity: activity.slice(-20) });
     }
 
     @tool('Review a completed task and add quality feedback', {
@@ -112,11 +112,11 @@ Keep feedback constructive and specific. Be concise.`;
 
         if (status === 'done') {
             if (this.workspace) {
-                const stats = this.workspace.select('stats') || {
+                const stats = { ...(this.workspace.state.stats || {
                     totalCreated: 0, totalCompleted: 0, totalDeleted: 0, agentInteractions: 0,
-                };
+                }) };
                 stats.totalCompleted++;
-                this.workspace.setSlice('stats', stats);
+                this.workspace.setState({ stats });
             }
         }
         this._trackStats(`Moved "${task.title}" ${oldStatus} → ${status}`);
@@ -165,7 +165,7 @@ Keep feedback constructive and specific. Be concise.`;
 
         let wsStats = { totalCreated: 0, totalCompleted: 0, totalDeleted: 0, agentInteractions: 0 };
         if (this.workspace) {
-            wsStats = this.workspace.select('stats') || wsStats;
+            wsStats = this.workspace.state.stats || wsStats;
         }
 
         this._trackStats(`Generated sprint summary for "${period || 'current sprint'}"`);

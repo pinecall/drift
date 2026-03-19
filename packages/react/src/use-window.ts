@@ -4,6 +4,7 @@
  * ★ The star hook. Real-time reactive window state.
  * 
  *   const { items, state, open, close, refresh, disable, enable, setState } = useWindow();
+ *   const { items } = useWindow('files');  // filter by window name
  * 
  * Every window:changed event from the server updates React state.
  * Every action dispatches to the server and auto-syncs back.
@@ -38,20 +39,28 @@ export interface UseWindowReturn<T extends WindowItem = WindowItem, S = Record<s
     size: number;
 }
 
-export function useWindow<T extends WindowItem = WindowItem, S = Record<string, any>>(): UseWindowReturn<T, S> {
+/**
+ * @param windowName Optional — filter events by window name (for workspace windows).
+ *                   If omitted, listens to all window:changed events.
+ */
+export function useWindow<T extends WindowItem = WindowItem, S = Record<string, any>>(windowName?: string): UseWindowReturn<T, S> {
     const { send, subscribe } = useDriftContext();
     const [items, setItems] = useState<T[]>([]);
     const [state, setState_] = useState<S>({} as S);
 
-    // Subscribe to window:changed events
+    // Subscribe to window:changed events (optionally filtered by windowName)
     useEffect(() => {
         return subscribe((event) => {
             if (event.event === 'window:changed') {
+                // If windowName provided, filter by it
+                if (windowName && event.windowName && event.windowName !== windowName) {
+                    return;
+                }
                 if (event.items) setItems(event.items);
                 if (event.state) setState_(event.state);
             }
         });
-    }, [subscribe]);
+    }, [subscribe, windowName]);
 
     // ── Actions ─────────────────────────────────────
 

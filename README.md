@@ -1580,32 +1580,30 @@ The agent won't see disabled items in its prompt, but they're preserved for when
 
 ## Workspace
 
-Shared reactive state container for **multi-agent collaboration**. Unlike Window (per-agent domain data), Workspace is a single global state shared across ALL agents.
+Shared reactive **workstation** for multi-agent collaboration. Workspace is a container that holds **named Windows** and a **shared state object** accessible to all agents.
 
 | | **Window** | **Workspace** |
 |---|---|---|
-| Data | Items + State | State only (flat, keyed by "slices") |
+| Data | Items + State | Named Windows + shared state |
 | Scope | Per-agent (shared by class) | Global — one per server |
-| Agent sees | Everything via `render()` | Only selected slices via `workspaceSlices` |
-| Purpose | Domain objects (tasks, files) | Cross-agent shared context |
+| Agent sees | Everything via `render()` | Only selected windows via `windows` |
+| Purpose | Domain objects (tasks, files) | Workstation that organizes windows |
 
 ### Creating a Workspace
 
 ```typescript
 import { Workspace, DriftServer } from 'drift';
 
-// Define workspace state type
-interface SprintState {
-    metrics: { velocity: number; completed: number; remaining: number };
-    reviews: Array<{ taskId: string; score: number }>;
-    activity: string[];
+// Define shared state type
+interface BoardState {
+    stats: { totalCreated: number; totalCompleted: number; agentInteractions: number };
+    lastActivity: string[];
 }
 
 // Create workspace with initial state
-const workspace = new Workspace<SprintState>('sprint', {
-    metrics: { velocity: 0, completed: 0, remaining: 0 },
-    reviews: [],
-    activity: [],
+const workspace = new Workspace<BoardState>('task-board', {
+    stats: { totalCreated: 0, totalCompleted: 0, agentInteractions: 0 },
+    lastActivity: [],
 });
 
 // Pass to server — all agents get access
@@ -1616,61 +1614,53 @@ await server.start();
 ### API
 
 ```typescript
-// ── Read (safe — returns structuredClone) ──
-workspace.state;              // Readonly<S> — full state
-workspace.select('metrics');  // deep copy of one slice
-workspace.version('metrics'); // current version number
-workspace.versions;           // all version numbers
+// ── State (read/write) ──
+workspace.state;              // full state object
+workspace.state.stats;        // access specific keys
+workspace.setState({ stats: updatedStats });  // shallow merge
 
-// ── Write ──
-workspace.setState({ activity: ['Agent started'] });  // shallow merge
-workspace.setSlice('metrics', { velocity: 8, completed: 12, remaining: 5 });  // atomic
-
-// ── Optimistic locking (concurrent-safe) ──
-const v = workspace.version('metrics');
-const ok = workspace.setSlice('metrics', newMetrics, v);
-// ok = false if another agent already wrote → caller retries with fresh data
+// ── Window management ──
+workspace.addWindow('board', boardWindow);   // register named window
+workspace.getWindow('board');                // retrieve by name
+workspace.getWindow<TaskBoardWindow>('board'); // typed retrieval
+workspace.removeWindow('temp');              // unregister
+workspace.windowNames;                       // ['board', 'files', ...]
+workspace.hasWindow('board');                // boolean
 
 // ── Events ──
 workspace.on('change', (event) => {
-    event.action;    // 'setState' | 'setSlice' | 'sync'
-    event.slice;     // which slice changed (for setSlice)
-    event.state;     // full state snapshot
-    event.version;   // version of the changed slice
-    event.versions;  // all current versions
+    event.action;      // 'setState' | 'windowAdded' | 'windowRemoved' | 'sync'
+    event.state;       // full state snapshot
+    event.windowName;  // which window was added/removed
 });
 
 // ── Serialization ──
-workspace.toJSON();    // { name, state, versions }
+workspace.toJSON();    // { name, state, windows: {...} }
 workspace.loadJSON(data);
 ```
 
 ### Agent Binding
 
-Agents declare which workspace slices they need:
+Agents declare which workspace Windows they need:
 
 ```typescript
 class MetricsAgent extends Agent {
     prompt = 'You track sprint metrics.';
-    workspaceSlices = ['metrics', 'activity'];  // only sees these slices
+    windows = ['metrics', 'activity'];  // only sees these windows
 }
 
 class ReviewAgent extends Agent {
     prompt = 'You review completed tasks.';
-    workspaceSlices = ['reviews', 'metrics'];
+    windows = ['reviews', 'metrics'];
 }
 ```
 
-The selected slices are injected into the agent's system prompt as XML:
+The selected windows are rendered and injected into the agent's system prompt as XML:
 
 ```xml
-<workspace name="sprint">
-  <slice name="metrics" v="3">
-    {"velocity": 8, "completed": 12, "remaining": 5}
-  </slice>
-  <slice name="activity" v="7">
-    ["Agent started", "Completed task-1"]
-  </slice>
+<workspace name="task-board">
+  <!-- rendered windows -->
+  <state>{"stats": {...}, "lastActivity": [...]}</state>
 </workspace>
 ```
 
@@ -1682,12 +1672,12 @@ Agents also access workspace in tools via `ctx.workspace`.
 import { useWorkspace } from 'drift/react';
 
 function Dashboard() {
-    const { state, setState, setSlice, versions } = useWorkspace<SprintState>();
+    const { state, setState, windowNames } = useWorkspace<BoardState>();
 
     return (
         <div>
-            <h2>Velocity: {state.metrics?.velocity}</h2>
-            <button onClick={() => setSlice('metrics', { ...state.metrics, velocity: 10 })}>
+            <h2>Created: {state.stats?.totalCreated}</h2>
+            <button onClick={() => setState({ stats: { ...state.stats, totalCreated: 10 } })}>
                 Update
             </button>
         </div>
@@ -1699,15 +1689,13 @@ function Dashboard() {
 |---|---|---|
 | `state` | `S` | Full workspace state (reactive) |
 | `setState(patch)` | `void` | Shallow merge into state |
-| `setSlice(key, value)` | `void` | Replace a single slice |
-| `versions` | `Record<string, number>` | Per-slice version numbers |
+| `windowNames` | `string[]` | Registered window names |
 
 ### WS Protocol
 
 | Client Action | Server Event | Description |
 |---|---|---|
 | `workspace:setState` | `workspace:changed` | Shallow merge state |
-| `workspace:setSlice` | `workspace:changed` | Replace one slice |
 | — (on connect) | `workspace:changed` | Full state sync |
 
 Workspace state is **automatically persisted** to SQLite (`workspace_state` table) with debounced writes (max 1x/100ms). Restored on server restart.
@@ -1826,7 +1814,7 @@ class TaskLifecycle extends Trigger {
 | Method | Description |
 |--------|-------------|
 | `this.dispatch(agent, message, opts?)` | Dispatch an agent |
-| `this.select(key)` | Read a workspace slice |
+| `this.select(key)` | Read a workspace state value |
 | `this.workspace` | Shared workspace reference |
 | `this.window` | First shared window reference |
 
@@ -1867,7 +1855,7 @@ class SafePipeline extends Pipeline {
     steps = ['scanner', 'analyzer', 'executor'];
 
     afterStep(step: number, ctx: PipelineContext): void {
-        this.workspace?.setSlice('progress', `Step ${step + 1} done`);
+        this.workspace?.setState({ progress: `Step ${step + 1} done` });
     }
 
     onError(step: number, error: Error): 'abort' | 'skip' | 'retry' {
@@ -1899,12 +1887,12 @@ class SafePipeline extends Pipeline {
 
 ### Agent Subscribes (Blackboard)
 
-Declare `subscribes` on an Agent to auto-dispatch it when workspace slices change. Internally generates Trigger instances — no separate files needed.
+Declare `subscribes` on an Agent to auto-dispatch it when workspace Windows change. Internally generates Trigger instances — no separate files needed.
 
 ```typescript
 class MarketAgent extends Agent {
     model = 'haiku';
-    subscribes = ['prices', 'signals'];  // auto-dispatch on change
+    subscribes = ['prices', 'signals'];  // auto-dispatch on window change
     subscribeCooldown = 10_000;           // default: 5000ms
 }
 ```
@@ -1913,10 +1901,10 @@ class MarketAgent extends Agent {
 
 ```typescript
 class ExecutorAgent extends Agent {
-    subscribes = [{ slice: 'signals', cooldown: 0 }];  // per-slice config
+    subscribes = [{ window: 'signals', cooldown: 0 }];  // per-window config
 
-    onSliceChange(slice: string, value: any): string | null {
-        if (value?.action === 'BUY') return `Execute BUY: ${JSON.stringify(value)}`;
+    onWindowChange(windowName: string, event: any): string | null {
+        if (event.items?.[0]?.action === 'BUY') return `Execute BUY for ${event.items[0].symbol}`;
         return null;  // skip
     }
 }
@@ -1926,9 +1914,9 @@ class ExecutorAgent extends Agent {
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
-| `subscribes` | `(string \| { slice, cooldown? })[]` | — | Workspace slices to watch |
+| `subscribes` | `(string \| { window, cooldown? })[]` | — | Workspace windows to watch |
 | `subscribeCooldown` | `number` | `5000` | Default cooldown (ms) |
-| `onSliceChange()` | `(slice, value, event) => string \| null` | — | Custom message builder |
+| `onWindowChange()` | `(windowName, event) => string \| null` | — | Custom message builder |
 
 ### TaskBoard (Kanban)
 

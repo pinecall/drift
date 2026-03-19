@@ -23,7 +23,7 @@ import { resolvePrompt } from './prompt.ts';
 import { Conversation } from './conversation.ts';
 import { Cache } from './cache.ts';
 import { Window } from '../state/window.ts';
-import { Workspace } from '../state/workspace.ts';
+import type { Workspace } from '../state/workspace.ts';
 import { Pricing } from './pricing.ts';
 import { Provider } from '../provider/provider.ts';
 import {
@@ -32,7 +32,7 @@ import {
 } from '../provider/models.ts';
 import { registerBuiltinTools, registerSelectedTools } from '../tools/index.ts';
 import type { DispatchFn } from '../coordination/trigger.ts';
-import type { WorkspaceChangeEvent } from '../state/workspace.ts';
+
 import type { TaskBoard } from '../coordination/taskboard.ts';
 import type {
     AgentResult, AgentOptions, ToolSchema, ToolDefinition,
@@ -112,6 +112,9 @@ export class Agent extends EventEmitter {
     /** Max agentic loop iterations */
     maxIterations: number = 25;
 
+    /** Allow multiple tool calls in a single LLM turn. Default: true */
+    parallelToolCalls: boolean = true;
+
     /** Max output tokens (auto-capped to model limit) */
     maxTokens?: number;
 
@@ -127,31 +130,31 @@ export class Agent extends EventEmitter {
     /** Shared workspace — injected by DriftServer, shared across all agents */
     workspace?: Workspace<any>;
 
-    /** Which workspace slices this agent sees in its prompt. null/undefined = all. */
-    workspaceSlices?: string[];
+    /** Which workspace windows this agent sees in its prompt. null/undefined = all. */
+    windows?: string[];
 
     /** Enable dispatch_agent tool — allows this agent to invoke other agents. */
     canDispatch: boolean = false;
 
     /**
-     * Workspace slices to subscribe to (Blackboard pattern).
-     * When any subscribed slice changes, this agent is auto-dispatched.
+     * Workspace windows to subscribe to (Blackboard pattern).
+     * When any subscribed window changes, this agent is auto-dispatched.
      * Internally generates Trigger instances during server startup.
      * 
-     * Simple: `subscribes = ['prices', 'signals']`
-     * With config: `subscribes = [{ slice: 'prices', cooldown: 30_000 }]`
+     * Simple: `subscribes = ['tasks', 'files']`
+     * With config: `subscribes = [{ window: 'tasks', cooldown: 30_000 }]`
      */
-    subscribes?: (string | { slice: string; cooldown?: number })[];
+    subscribes?: (string | { window: string; cooldown?: number })[];
 
-    /** Default cooldown for workspace subscriptions in ms. Default: 5000. */
+    /** Default cooldown for window subscriptions in ms. Default: 5000. */
     subscribeCooldown: number = 5_000;
 
     /**
-     * Custom handler for workspace slice changes (Blackboard pattern).
+     * Custom handler for window change events (Blackboard pattern).
      * Return the dispatch message, or null to skip the dispatch.
-     * If not defined, a default message with the slice name and value is used.
+     * If not defined, a default message with the window name and event info is used.
      */
-    onSliceChange?(slice: string, value: any, event: WorkspaceChangeEvent): string | null;
+    onWindowChange?(windowName: string, event: any): string | null;
 
     /** Shared TaskBoard — injected by DriftServer for Kanban coordination. */
     taskboard?: TaskBoard;
@@ -715,9 +718,9 @@ export class Agent extends EventEmitter {
         // Block 1: Base prompt
         entries.push({ type: 'text', text: this._resolvedPrompt });
 
-        // Block 2: Workspace slices (shared state — before window)
+        // Block 2: Workspace (renders selected windows + shared state)
         if (this.workspace) {
-            const workspaceContent = this.workspace.render(this.workspaceSlices);
+            const workspaceContent = this.workspace.render(this.windows);
             if (workspaceContent) {
                 entries.push({ type: 'text', text: workspaceContent });
             }
@@ -731,7 +734,7 @@ export class Agent extends EventEmitter {
             }
         }
 
-        // Block 4: Window content (if available)
+        // Block 4: Agent's own window (always render if present)
         if (this.window) {
             const windowContent = this.window.render();
             if (windowContent) {
@@ -792,6 +795,11 @@ export class Agent extends EventEmitter {
         // Effort (adaptive thinking only)
         if (this.thinking && this.effort && this.effort !== 'low' && this._modelConfig.thinkingMode === 'adaptive') {
             params.output_config = { effort: this.effort };
+        }
+
+        // Disable parallel tool calls — forces one tool call per LLM turn
+        if (!this.parallelToolCalls && tools.length > 0) {
+            params.tool_choice = { type: 'auto', disable_parallel_tool_use: true };
         }
 
         return params;
