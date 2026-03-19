@@ -436,6 +436,39 @@ This means:
 - `loadJSON()` then **replaces everything** — `clear()` + repopulate from DB
 - If no saved data exists, seed data from the constructor remains
 
+### Activity Log
+
+Framework-level compact log visible in the agent's system prompt. Useful for tracking workflow progress across multiple agent dispatches:
+
+```typescript
+// Add log entries (from agent tools, triggers, etc.)
+win.log('🔍 Researcher completed: "Problem"');
+win.log('✍️ Writer completed: "Problem"');
+
+// Read log entries
+console.log(win.logs);  // readonly string[] — most recent 20 entries
+
+// Clear log
+win.clearLog();
+```
+
+**How it works:**
+- Entries are capped at 20 (oldest dropped first)
+- Log is included in `render()` output inside `<log>` tags
+- Serialized with `toJSON()` and restored via `loadJSON()`
+- Emits `'change'` events (action: `'log'` or `'clearLog'`)
+
+**In the system prompt:**
+```xml
+<window>
+  slide-1: {...}
+<log>
+  🔍 Researcher completed: "Problem"
+  ✍️ Writer completed: "Problem"
+</log>
+</window>
+```
+
 ### Serialization Format
 
 ```typescript

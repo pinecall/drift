@@ -119,6 +119,10 @@ interface DispatchOptions {
     silent?: boolean;     // Don't broadcast to WS clients (default: false)
     timeout?: number;     // Max execution time in ms
     source?: string;      // Who triggered this: 'trigger:auto-review', 'agent:PlannerAgent', 'ui'
+    streamTo?: {          // Map streaming text to a window item field (for UI streaming)
+        itemId: string;   // Target item ID (e.g. slide ID)
+        field: string;    // Target field name (e.g. 'research', 'content')
+    };
 }
 ```
 

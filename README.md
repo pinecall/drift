@@ -64,6 +64,7 @@ console.log(result.cost);   // 0.003241
   - [Window Base Class](#window-base-class)
   - [State (React-like)](#state-react-like)
   - [Events](#events-1)
+  - [Activity Log](#activity-log)
   - [CodebaseWindow](#codebasewindow)
   - [UI Sync (useWindow)](#ui-sync-usewindow)
   - [Custom Windows](#custom-windows)
@@ -94,6 +95,8 @@ console.log(result.cost);   // 0.003241
   - [useSessions()](#usesessions)
   - [useWindow()](#usewindow)
   - [useDrift()](#usedrift)
+  - [useAgentStream()](#useagentstream)
+  - [useMarkdown()](#usemarkdowntext-options)
 - [MCP (Model Context Protocol)](#mcp-model-context-protocol)
 - [Models](#models)
   - [Thinking Configuration](#thinking-configuration)
@@ -180,6 +183,7 @@ Override these in your subclass to configure the agent:
 | `builtinTools` | `string[]` | `[]` | Built-in tools to register: categories (`'all'`, `'edit'`, `'filesystem'`, `'shell'`) or individual names (see [builtinTools](#builtintools--selective-registration)) |
 | `allowedTools` | `string[] \| null` | `null` | Whitelist of tool names to enable. `null` = all tools |
 | `disabledTools` | `string[] \| null` | `null` | Blacklist of tool names to disable |
+| `parallelToolCalls` | `boolean` | `true` | Allow LLM to call multiple tools in one turn. Set `false` to force sequential one-tool-per-turn (uses Anthropic `disable_parallel_tool_use`) |
 | `thinkingBudget` | `number \| null` | `null` | Manual thinking token budget (Haiku only) |
 
 ### Constructor Options
@@ -1282,6 +1286,36 @@ win.on('change', (event) => {
 });
 ```
 
+### Activity Log
+
+Framework-level compact log visible in the agent's system prompt. Capped at 20 entries, serialized with the window:
+
+```typescript
+// Add entries (from agent tools, triggers, etc.)
+win.log('🔍 Researcher completed: "Problem"');
+win.log('✍️ Writer completed: "Problem"');
+
+// Read
+console.log(win.logs);  // readonly string[]
+
+// Clear
+win.clearLog();
+```
+
+Log entries appear in `render()` inside `<log>` tags and are visible in the agent's system prompt:
+
+```xml
+<window>
+  slide-1: {...}
+<log>
+  🔍 Researcher completed: "Problem"
+  ✍️ Writer completed: "Problem"
+</log>
+</window>
+```
+
+Custom windows can also include logs in their `render()` override using `this.logs`.
+
 ### CodebaseWindow
 
 `Window<FileEntry>` subclass for code editing agents. Reads files from disk, renders numbered code in `<window>` XML.
@@ -1736,6 +1770,10 @@ type DispatchFn = (
         silent?: boolean;     // don't broadcast to UI (default: false)
         timeout?: number;     // max ms
         source?: string;      // 'trigger:auto-review', 'agent:Planner', 'ui'
+        streamTo?: {          // map streaming text to a window item field
+            itemId: string;   // target item ID (e.g. slide ID)
+            field: string;    // target field name (e.g. 'research', 'content')
+        };
     }
 ) => Promise<DispatchResult>;
 
@@ -2562,6 +2600,68 @@ function Header() {
     );
 }
 ```
+
+### useAgentStream()
+
+Subscribe to real-time text streaming from dispatched agents. Streams are keyed by `itemId` when triggers use `streamTo`:
+
+```tsx
+import { useAgentStream } from 'drift/react';
+
+function SlideCard({ slide }) {
+    const streams = useAgentStream();
+    const stream = streams.get(slide.id);
+    // stream: { text, field, agent, sessionId, isStreaming }
+
+    if (stream?.isStreaming) {
+        return <div>Agent "{stream.agent}" writing {stream.field}...</div>;
+    }
+}
+```
+
+**Trigger setup** — pass `streamTo` to map streaming output to a field:
+
+```typescript
+await this.dispatch('researcher-agent', message, {
+    streamTo: { itemId: slide.id, field: 'research' }
+});
+// UI receives: { event: 'chat:text', delta, full, streamTo: { itemId, field } }
+```
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `text` | `string` | Accumulated streamed text |
+| `field` | `string` | Target field (`'research'`, `'content'`, etc.) |
+| `agent` | `string` | Agent name producing the stream |
+| `isStreaming` | `boolean` | `true` while agent is generating |
+
+> **Concurrency**: Multiple dispatches to the same agent run in parallel with isolated streams using `AsyncLocalStorage`. Each dispatch's events are tagged with a unique nonce — no mixing.
+
+### useMarkdown(text, options?)
+
+Parse markdown text and optionally animate it character-by-character using `requestAnimationFrame`:
+
+```tsx
+import { useMarkdown } from 'drift/react';
+
+function StreamingContent({ text, isStreaming }) {
+    const { html } = useMarkdown(text, {
+        streaming: isStreaming,   // enable RAF character animation
+        charsPerFrame: 6,        // characters revealed per frame
+    });
+
+    return <div className="drift-md" dangerouslySetInnerHTML={{ __html: html }} />;
+}
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `streaming` | `boolean` | `false` | Enable character-by-character RAF animation |
+| `charsPerFrame` | `number` | `4` | Characters revealed per animation frame |
+
+The `parseMarkdown(text)` utility is also exported for one-shot (non-animated) rendering.
+
+> **CSS**: Add `drift-md` class for default markdown styles (headings, lists, code blocks, etc.).
 
 ---
 
