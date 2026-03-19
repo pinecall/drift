@@ -36,14 +36,18 @@ export class DeckWindow extends Window<Slide, DeckState> {
         super({ topic: '', totalSlides: 0, completedSlides: 0, activity: [] });
     }
 
+    /** Log for both UI (state.activity) and agent system prompt (window.log) */
     logActivity(message: string) {
+        // UI activity feed
         const activity = [...(this.state.activity || [])];
         activity.push(`[${new Date().toLocaleTimeString()}] ${message}`);
         this.setState({ activity: activity.slice(-30) });
+        // Framework log (visible in agent system prompt)
+        this.log(message);
     }
 
     render(): string {
-        if (this.size === 0) return '<deck>\nNo slides yet.\n</deck>';
+        if (this.size === 0 && this.logs.length === 0) return '<deck>\nNo slides yet.\n</deck>';
 
         const slides = this.list().sort((a, b) => a.order - b.order);
         const phaseEmoji: Record<string, string> = {
@@ -65,6 +69,13 @@ export class DeckWindow extends Window<Slide, DeckState> {
                 ))}
                 <br />
                 <line>Progress: {slides.filter(s => s.phase === 'done').length}/{slides.length} complete</line>
+                {this.logs.length > 0 && (
+                    <>
+                        <br />
+                        <line>Agent Activity:</line>
+                        {this.logs.map(l => <line>  • {l}</line>)}
+                    </>
+                )}
             </window>
         );
     }

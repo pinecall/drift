@@ -47,6 +47,8 @@ export class Window<T extends WindowItem = WindowItem, S extends Record<string, 
     protected _items = new Map<string, T>();
     protected _state: S;
     protected _turn: number = 0;
+    protected _log: string[] = [];
+    protected _maxLogEntries: number = 20;
 
     constructor(initialState?: S) {
         super();
@@ -116,6 +118,26 @@ export class Window<T extends WindowItem = WindowItem, S extends Record<string, 
         this._emit('clear');
     }
 
+    // ── Activity Log ────────────────────────────────
+
+    /** Add a compact log entry (visible in agent system prompt). Capped at maxLogEntries. */
+    log(message: string): void {
+        this._log.push(message);
+        if (this._log.length > this._maxLogEntries) {
+            this._log = this._log.slice(-this._maxLogEntries);
+        }
+    }
+
+    /** Get all log entries. */
+    get logs(): readonly string[] {
+        return this._log;
+    }
+
+    /** Clear the activity log. */
+    clearLog(): void {
+        this._log = [];
+    }
+
     /** Number of items. */
     get size(): number {
         return this._items.size;
@@ -141,9 +163,19 @@ export class Window<T extends WindowItem = WindowItem, S extends Record<string, 
      * Return empty string to skip injection.
      */
     render(): string {
-        if (this._items.size === 0) return '';
-        const lines = this.list().map(item => `  ${item.id}: ${JSON.stringify(item)}`);
-        return `\n\n<window>\n${lines.join('\n')}\n</window>`;
+        if (this._items.size === 0 && this._log.length === 0) return '';
+        const parts: string[] = ['\n\n<window>'];
+        if (this._items.size > 0) {
+            const lines = this.list().map(item => `  ${item.id}: ${JSON.stringify(item)}`);
+            parts.push(lines.join('\n'));
+        }
+        if (this._log.length > 0) {
+            parts.push('\n<log>');
+            parts.push(this._log.map(l => `  ${l}`).join('\n'));
+            parts.push('</log>');
+        }
+        parts.push('</window>');
+        return parts.join('\n');
     }
 
     /**
@@ -157,22 +189,24 @@ export class Window<T extends WindowItem = WindowItem, S extends Record<string, 
     // ── Serialization ───────────────────────────────
 
     /** Serialize to plain object for persistence. */
-    toJSON(): { items: [string, T][]; state: S; turn: number } {
+    toJSON(): { items: [string, T][]; state: S; turn: number; log?: string[] } {
         return {
             items: [...this._items.entries()],
             state: this._state,
             turn: this._turn,
+            log: this._log.length > 0 ? this._log : undefined,
         };
     }
 
     /** Restore from serialized data. */
-    loadJSON(data: { items: [string, T][]; state?: S; turn?: number }): void {
+    loadJSON(data: { items: [string, T][]; state?: S; turn?: number; log?: string[] }): void {
         this._items.clear();
         for (const [id, item] of data.items) {
             this._items.set(id, item);
         }
         if (data.state) this._state = data.state;
         this._turn = data.turn || 0;
+        if (data.log) this._log = data.log;
     }
 
     // ── Internals ───────────────────────────────────
