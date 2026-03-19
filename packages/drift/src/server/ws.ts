@@ -169,6 +169,31 @@ export function createWSHandler(
         message: string,
         options?: DispatchOptions,
     ): Promise<DispatchResult> => {
+        // Per-agent lock: serialize dispatches to the same agent
+        // (prevents EventEmitter event mixing from concurrent sessions)
+        const existingLock = _agentDispatchLocks.get(agentName);
+        if (existingLock) {
+            try { await existingLock; } catch { /* ignore previous errors */ }
+        }
+
+        const runPromise = _dispatchImpl(agentName, message, options);
+        _agentDispatchLocks.set(agentName, runPromise);
+        try {
+            return await runPromise;
+        } finally {
+            if (_agentDispatchLocks.get(agentName) === runPromise) {
+                _agentDispatchLocks.delete(agentName);
+            }
+        }
+    };
+
+    const _agentDispatchLocks = new Map<string, Promise<DispatchResult>>();
+
+    const _dispatchImpl = async (
+        agentName: string,
+        message: string,
+        options?: DispatchOptions,
+    ): Promise<DispatchResult> => {
         const agent = _resolveAgent(agentName);
         const sid = options?.sessionId || `__dispatch__:${agentName}:${Date.now()}`;
         const silent = options?.silent ?? false;
