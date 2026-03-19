@@ -21,6 +21,7 @@
 import type { WebSocket } from 'ws';
 import { WebSocketServer } from 'ws';
 import type { Server as HttpServer, IncomingMessage } from 'node:http';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type { Agent } from '../core/agent.ts';
 import { Session } from '../core/session.ts';
 import type { Window } from '../state/window.ts';
@@ -173,6 +174,7 @@ export function createWSHandler(
     };
 
     let _dispatchNonceCounter = 0;
+    const _dispatchContext = new AsyncLocalStorage<{ nonce: number }>();
 
     const _dispatchImpl = async (
         agentName: string,
@@ -199,15 +201,6 @@ export function createWSHandler(
             broadcast({ event: 'dispatch:started', agent: agentName, sessionId: sid, source });
         }
 
-        // Wrap agent.emit to tag events with dispatch nonce
-        const originalEmit = agent.emit.bind(agent);
-        agent.emit = (event: string | symbol, ...args: any[]): boolean => {
-            if (typeof event === 'string' && args.length > 0 && typeof args[0] === 'object' && args[0] !== null) {
-                args[0]._dispatchNonce = nonce;
-            }
-            return originalEmit(event, ...args);
-        };
-
         // Wire agent events → broadcast (unless silent)
         const runId = _claimAgentRun(agentName);
         const cleanup = _wireAgentEvents(
@@ -224,7 +217,10 @@ export function createWSHandler(
             const ts = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
             const stamped = `[${ts}] [dispatch from ${source}] ${message}`;
 
-            const result = await session.run(stamped, { timeout: options?.timeout });
+            // Run inside AsyncLocalStorage context for nonce isolation
+            const result = await _dispatchContext.run({ nonce }, () =>
+                session!.run(stamped, { timeout: options?.timeout })
+            );
 
             // Broadcast done
             if (!silent) {
@@ -260,7 +256,6 @@ export function createWSHandler(
             }
             throw err;
         } finally {
-            agent.emit = originalEmit;
             cleanup();
         }
     };
@@ -1226,11 +1221,12 @@ export function createWSHandler(
         let accText = '';
         let accThinking = '';
 
-        // Gate: only forward events that belong to THIS dispatch (by nonce)
-        // Falls back to runId check for non-nonce dispatches (e.g. chat:stream)
-        const isActive = (data?: any) => {
-            if (nonce !== undefined && data?._dispatchNonce !== undefined) {
-                return data._dispatchNonce === nonce;
+        // Gate: only forward events that belong to THIS dispatch
+        // Uses AsyncLocalStorage context to identify which dispatch emitted the event
+        const isActive = () => {
+            if (nonce !== undefined) {
+                const ctx = _dispatchContext.getStore();
+                if (ctx) return ctx.nonce === nonce;
             }
             return runId === undefined || _agentRunIds.get(agentName) === runId;
         };
@@ -1241,21 +1237,21 @@ export function createWSHandler(
         }
 
         on('text:delta', (data) => {
-            if (!isActive(data)) return;
+            if (!isActive()) return;
             accText += data.chunk;
             broadcast({ event: 'chat:text', agent: agentName, sessionId, delta: data.chunk, full: accText, ...(streamTo ? { streamTo } : {}) });
         });
         on('thinking:delta', (data) => {
-            if (!isActive(data)) return;
+            if (!isActive()) return;
             accThinking += data.text;
             broadcast({ event: 'chat:thinking', agent: agentName, sessionId, thinking: accThinking });
         });
         on('tool:execute', (data) => {
-            if (!isActive(data)) return;
+            if (!isActive()) return;
             broadcast({ event: 'chat:tool', agent: agentName, sessionId, name: data.name, params: data.params });
         });
         on('tool:result', (data) => {
-            if (!isActive(data)) return;
+            if (!isActive()) return;
             broadcast({ event: 'chat:tool:result', agent: agentName, sessionId, name: data.name, result: data.result, ms: data.ms });
         });
 
