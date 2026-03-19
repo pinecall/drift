@@ -169,25 +169,10 @@ export function createWSHandler(
         message: string,
         options?: DispatchOptions,
     ): Promise<DispatchResult> => {
-        // Per-agent lock: serialize dispatches to the same agent
-        // (prevents EventEmitter event mixing from concurrent sessions)
-        const existingLock = _agentDispatchLocks.get(agentName);
-        if (existingLock) {
-            try { await existingLock; } catch { /* ignore previous errors */ }
-        }
-
-        const runPromise = _dispatchImpl(agentName, message, options);
-        _agentDispatchLocks.set(agentName, runPromise);
-        try {
-            return await runPromise;
-        } finally {
-            if (_agentDispatchLocks.get(agentName) === runPromise) {
-                _agentDispatchLocks.delete(agentName);
-            }
-        }
+        return _dispatchImpl(agentName, message, options);
     };
 
-    const _agentDispatchLocks = new Map<string, Promise<DispatchResult>>();
+    let _dispatchNonceCounter = 0;
 
     const _dispatchImpl = async (
         agentName: string,
@@ -198,6 +183,9 @@ export function createWSHandler(
         const sid = options?.sessionId || `__dispatch__:${agentName}:${Date.now()}`;
         const silent = options?.silent ?? false;
         const source = options?.source || 'dispatch';
+
+        // Unique nonce for this dispatch — used to isolate concurrent streams
+        const nonce = ++_dispatchNonceCounter;
 
         // Get or create session
         let session = sessions.get(sid);
@@ -211,6 +199,15 @@ export function createWSHandler(
             broadcast({ event: 'dispatch:started', agent: agentName, sessionId: sid, source });
         }
 
+        // Wrap agent.emit to tag events with dispatch nonce
+        const originalEmit = agent.emit.bind(agent);
+        agent.emit = (event: string | symbol, ...args: any[]): boolean => {
+            if (typeof event === 'string' && args.length > 0 && typeof args[0] === 'object' && args[0] !== null) {
+                args[0]._dispatchNonce = nonce;
+            }
+            return originalEmit(event, ...args);
+        };
+
         // Wire agent events → broadcast (unless silent)
         const runId = _claimAgentRun(agentName);
         const cleanup = _wireAgentEvents(
@@ -218,6 +215,7 @@ export function createWSHandler(
             silent ? () => {} : broadcast,
             runId,
             options?.streamTo,
+            nonce,
         );
 
         try {
@@ -262,6 +260,7 @@ export function createWSHandler(
             }
             throw err;
         } finally {
+            agent.emit = originalEmit;
             cleanup();
         }
     };
@@ -1222,13 +1221,19 @@ export function createWSHandler(
         return runId;
     }
 
-    function _wireAgentEvents(agent: Agent, agentName: string, sessionId: string, broadcast: (data: any) => void, runId?: number, streamTo?: { itemId: string; field: string }): () => void {
+    function _wireAgentEvents(agent: Agent, agentName: string, sessionId: string, broadcast: (data: any) => void, runId?: number, streamTo?: { itemId: string; field: string }, nonce?: number): () => void {
         const handlers: [string, (...args: any[]) => void][] = [];
         let accText = '';
         let accThinking = '';
 
-        // Gate: only forward events if this run is still the active run for this agent
-        const isActive = () => runId === undefined || _agentRunIds.get(agentName) === runId;
+        // Gate: only forward events that belong to THIS dispatch (by nonce)
+        // Falls back to runId check for non-nonce dispatches (e.g. chat:stream)
+        const isActive = (data?: any) => {
+            if (nonce !== undefined && data?._dispatchNonce !== undefined) {
+                return data._dispatchNonce === nonce;
+            }
+            return runId === undefined || _agentRunIds.get(agentName) === runId;
+        };
 
         function on(event: string, handler: (...args: any[]) => void) {
             agent.on(event, handler);
@@ -1236,21 +1241,21 @@ export function createWSHandler(
         }
 
         on('text:delta', (data) => {
-            if (!isActive()) return;
+            if (!isActive(data)) return;
             accText += data.chunk;
             broadcast({ event: 'chat:text', agent: agentName, sessionId, delta: data.chunk, full: accText, ...(streamTo ? { streamTo } : {}) });
         });
         on('thinking:delta', (data) => {
-            if (!isActive()) return;
+            if (!isActive(data)) return;
             accThinking += data.text;
             broadcast({ event: 'chat:thinking', agent: agentName, sessionId, thinking: accThinking });
         });
         on('tool:execute', (data) => {
-            if (!isActive()) return;
+            if (!isActive(data)) return;
             broadcast({ event: 'chat:tool', agent: agentName, sessionId, name: data.name, params: data.params });
         });
         on('tool:result', (data) => {
-            if (!isActive()) return;
+            if (!isActive(data)) return;
             broadcast({ event: 'chat:tool:result', agent: agentName, sessionId, name: data.name, result: data.result, ms: data.ms });
         });
 
