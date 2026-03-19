@@ -27,7 +27,8 @@ ${slide.content}
 Research context:
 ${slide.research}
 
-Use finalize_slide with slideId "${slide.id}" to save the polished version.`
+Use finalize_slide with slideId "${slide.id}" to save the polished version.`,
+                { streamTo: { itemId: slide.id, field: 'finalContent' } }
             );
         },
     };

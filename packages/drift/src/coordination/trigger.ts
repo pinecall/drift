@@ -58,6 +58,8 @@ export interface DispatchOptions {
     timeout?: number;
     /** Who triggered the dispatch (e.g. 'trigger:auto-review', 'agent:planner', 'ui'). */
     source?: string;
+    /** Map streaming text output to a window item field for real-time UI rendering. */
+    streamTo?: { itemId: string; field: string };
 }
 
 export type DispatchFn = (

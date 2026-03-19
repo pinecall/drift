@@ -192,6 +192,7 @@ export function createWSHandler(
             agent, agentName, sid,
             silent ? () => {} : broadcast,
             runId,
+            options?.streamTo,
         );
 
         try {
@@ -1196,7 +1197,7 @@ export function createWSHandler(
         return runId;
     }
 
-    function _wireAgentEvents(agent: Agent, agentName: string, sessionId: string, broadcast: (data: any) => void, runId?: number): () => void {
+    function _wireAgentEvents(agent: Agent, agentName: string, sessionId: string, broadcast: (data: any) => void, runId?: number, streamTo?: { itemId: string; field: string }): () => void {
         const handlers: [string, (...args: any[]) => void][] = [];
         let accText = '';
         let accThinking = '';
@@ -1212,7 +1213,7 @@ export function createWSHandler(
         on('text:delta', (data) => {
             if (!isActive()) return;
             accText += data.chunk;
-            broadcast({ event: 'chat:text', agent: agentName, sessionId, delta: data.chunk, full: accText });
+            broadcast({ event: 'chat:text', agent: agentName, sessionId, delta: data.chunk, full: accText, ...(streamTo ? { streamTo } : {}) });
         });
         on('thinking:delta', (data) => {
             if (!isActive()) return;

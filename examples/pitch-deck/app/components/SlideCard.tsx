@@ -1,5 +1,5 @@
 import { Search, Pen, Palette, CheckCircle, Loader, Clock } from 'lucide-react'
-import { parseMarkdown } from 'drift/react'
+import { parseMarkdown, useMarkdown, type AgentStreamEntry } from 'drift/react'
 
 interface Slide {
     id: string;
@@ -23,11 +23,16 @@ const phaseConfig: Record<string, { color: string; bg: string; border: string; i
 
 const phaseSteps = ['pending', 'researching', 'writing', 'polishing', 'done'];
 
-export function SlideCard({ slide }: { slide: Slide }) {
+export function SlideCard({ slide, stream }: { slide: Slide; stream?: AgentStreamEntry }) {
     const config = phaseConfig[slide.phase] || phaseConfig.pending
     const Icon = config.icon
     const isWorking = ['researching', 'writing', 'polishing'].includes(slide.phase)
     const currentStep = phaseSteps.indexOf(slide.phase)
+
+    // Determine what to stream: show live stream text if agent is actively streaming
+    const isStreaming = stream?.isStreaming ?? false
+    const streamField = stream?.field
+    const streamText = stream?.text || ''
 
     return (
         <div style={{
@@ -135,9 +140,23 @@ export function SlideCard({ slide }: { slide: Slide }) {
                 </div>
             )}
 
-            {/* Content sections — appear progressively */}
+            {/* Content sections — show streaming text OR saved content */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {slide.research && (
+                {/* Live streaming section — shows while agent is actively generating */}
+                {isStreaming && streamText && (
+                    <StreamingSection
+                        field={streamField || ''}
+                        text={streamText}
+                        color={
+                            streamField === 'research' ? '#3b82f6' :
+                            streamField === 'content' ? '#f59e0b' :
+                            '#10b981'
+                        }
+                    />
+                )}
+
+                {/* Saved content sections */}
+                {slide.research && !(isStreaming && streamField === 'research') && (
                     <ContentSection
                         emoji="🔍"
                         label="Research"
@@ -146,7 +165,7 @@ export function SlideCard({ slide }: { slide: Slide }) {
                         expanded={!slide.content}
                     />
                 )}
-                {slide.content && (
+                {slide.content && !(isStreaming && streamField === 'content') && (
                     <ContentSection
                         emoji="✍️"
                         label="Content"
@@ -155,7 +174,7 @@ export function SlideCard({ slide }: { slide: Slide }) {
                         expanded={!slide.finalContent}
                     />
                 )}
-                {slide.finalContent && (
+                {slide.finalContent && !(isStreaming && streamField === 'finalContent') && (
                     <ContentSection
                         emoji="✅"
                         label="Final"
@@ -165,6 +184,44 @@ export function SlideCard({ slide }: { slide: Slide }) {
                     />
                 )}
             </div>
+        </div>
+    )
+}
+
+/** Live streaming content — uses useMarkdown with streaming animation */
+function StreamingSection({ field, text, color }: { field: string; text: string; color: string }) {
+    const { html } = useMarkdown(text, { streaming: true, charsPerFrame: 6 })
+    const label = field === 'research' ? '🔍 Researching...' :
+                  field === 'content' ? '✍️ Writing...' :
+                  '✨ Polishing...'
+
+    return (
+        <div style={{
+            background: '#0a0a12',
+            borderRadius: '8px',
+            padding: '10px 12px',
+            borderLeft: `3px solid ${color}`,
+            animation: 'fadeIn 0.5s ease-out',
+        }}>
+            <div style={{
+                fontSize: '10px',
+                textTransform: 'uppercase',
+                color: color,
+                marginBottom: '8px',
+                fontWeight: 600,
+                letterSpacing: '0.5px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+            }}>
+                {label}
+                <Loader size={10} style={{ animation: 'spin 1s linear infinite', marginLeft: '4px' }} />
+            </div>
+            <div
+                className="drift-md"
+                style={{ fontSize: '13px', lineHeight: 1.7 }}
+                dangerouslySetInnerHTML={{ __html: html }}
+            />
         </div>
     )
 }

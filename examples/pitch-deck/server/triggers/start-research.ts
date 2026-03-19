@@ -29,7 +29,8 @@ export class StartResearchTrigger extends Trigger {
             await this.dispatch('researcher-agent',
                 `Research for pitch deck slide "${slide.title}": ${slide.brief}
                  
-Use save_research with slideId "${slide.id}" to save your findings. Keep it to 3-4 bullet points.`
+Use save_research with slideId "${slide.id}" to save your findings. Keep it to 3-4 bullet points.`,
+                { streamTo: { itemId: slide.id, field: 'research' } }
             );
         },
     };

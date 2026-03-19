@@ -26,7 +26,8 @@ ${slide.research}
 
 Brief: ${slide.brief}
 
-Use save_content with slideId "${slide.id}" to save your written content.`
+Use save_content with slideId "${slide.id}" to save your written content.`,
+                { streamTo: { itemId: slide.id, field: 'content' } }
             );
         },
     };

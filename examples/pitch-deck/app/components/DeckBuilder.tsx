@@ -1,4 +1,4 @@
-import { useWindow, useWorkspace } from 'drift/react'
+import { useWindow, useWorkspace, useAgentStream } from 'drift/react'
 import { SlideCard } from './SlideCard'
 import { Activity, BarChart3, Users, Clock, Trash2 } from 'lucide-react'
 
@@ -35,6 +35,7 @@ interface WorkspaceState {
 export function DeckBuilder() {
     const { items: slides, state: deckState, removeItem, setState: setDeckState } = useWindow<Slide, DeckState>()
     const { state: ws, setState: setWs } = useWorkspace<WorkspaceState>()
+    const agentStreams = useAgentStream()
 
     const sortedSlides = [...slides].sort((a, b) => (a.order || 0) - (b.order || 0))
     const phaseCount = (phase: string) => slides.filter(s => s.phase === phase).length
@@ -176,7 +177,7 @@ export function DeckBuilder() {
                         </div>
                     )}
                     {sortedSlides.map(slide => (
-                        <SlideCard key={slide.id} slide={slide} />
+                        <SlideCard key={slide.id} slide={slide} stream={agentStreams.get(slide.id)} />
                     ))}
                 </div>
 
